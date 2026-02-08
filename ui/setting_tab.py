@@ -43,6 +43,11 @@ def load_novel_architecture(self):
     self.setting_text.delete("0.0", "end")
     self.setting_text.insert("0.0", content)
     self.log("已加载 Novel_architecture.txt 内容到编辑区。")
+    # 更新按钮状态
+    if hasattr(self, 'update_step_buttons_state'):
+        self.update_step_buttons_state()
+    if hasattr(self, 'update_optional_buttons_state'):
+        self.update_optional_buttons_state()
 
 def save_novel_architecture(self):
     filepath = self.filepath_var.get().strip()

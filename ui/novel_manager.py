@@ -152,8 +152,8 @@ class NovelManager:
         with open(info_file, 'w', encoding='utf-8') as f:
             json.dump(novel.to_dict(), f, ensure_ascii=False, indent=2)
 
-    def create_novel(self, title: str, description: str, 
-                    cover_image: str = "", tags: List[str] = None, save_path: str = "") -> Novel:
+    def create_novel(self, title: str, topic: str, genre: str, 
+                    cover_image: str = "", save_path: str = "") -> Novel:
         """创建新小说"""
         novel_id = f"novel_{uuid.uuid4().hex[:8]}"
         # 创建小说目录
@@ -170,9 +170,10 @@ class NovelManager:
         novel = Novel(
             novel_id=novel_id,
             title=title,
-            description=description,
+            description=topic,  # description字段存储topic内容
+            topic=topic,
+            genre=genre,
             cover_image=cover_image,
-            tags=tags or [],
             save_path=save_path
         )
         self._novels[novel_id] = novel
@@ -188,6 +189,13 @@ class NovelManager:
         for key, value in kwargs.items():
             if hasattr(novel, key):
                 setattr(novel, key, value)
+
+        # 如果更新了description，同时更新topic
+        if 'description' in kwargs:
+            novel.topic = kwargs['description']
+        # 如果更新了topic，同时更新description
+        if 'topic' in kwargs:
+            novel.description = kwargs['topic']
 
         novel.update_timestamp()
         self._save_novel(novel)
@@ -224,7 +232,7 @@ class NovelManager:
         for novel in self._novels.values():
             if (keyword in novel.title.lower() or 
                 keyword in novel.description.lower() or
-                any(keyword in tag.lower() for tag in novel.tags)):
+                keyword in novel.genre.lower()):
                 results.append(novel)
         return results
 
@@ -709,7 +717,7 @@ class NovelManagerUI(ctk.CTkFrame):
 
         self.search_entry = ctk.CTkEntry(
             search_frame,
-            placeholder_text="🔍 搜索小说标题、简介或标签...",
+            placeholder_text="🔍 搜索小说标题、主题或类型...",
             height=35,
             border_width=2,
             corner_radius=8,
@@ -956,9 +964,37 @@ class NovelManagerUI(ctk.CTkFrame):
                                   font=("Microsoft YaHei", 11, "bold"))
         title_label.pack(side="left")
 
+        # 标题占位符
+        title_placeholder = "请输入小说标题，如：修仙之路"
+
+        def set_title_placeholder():
+            if not title_var.get():
+                title_entry.delete(0, "end")
+                title_entry.insert(0, title_placeholder)
+                title_entry.configure(text_color=("gray70", "gray50"))
+
+        def clear_title_placeholder(event=None):
+            if title_entry.get() == title_placeholder:
+                title_entry.delete(0, "end")
+                title_entry.configure(text_color=("black", "white"))
+
+        def check_title_placeholder(event=None):
+            if not title_var.get():
+                set_title_placeholder()
+
         title_var = ctk.StringVar(value=novel.title if novel else "")
         title_entry = ctk.CTkEntry(title_frame, textvariable=title_var, height=32)
         title_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+        # 初始化占位符
+        if novel and novel.title:
+            title_entry.configure(text_color=("black", "white"))
+        else:
+            set_title_placeholder()
+
+        # 绑定事件
+        title_entry.bind("<FocusIn>", clear_title_placeholder)
+        title_entry.bind("<FocusOut>", check_title_placeholder)
         
         # 添加标题长度限制
         def validate_title(*args):
@@ -967,18 +1003,46 @@ class NovelManagerUI(ctk.CTkFrame):
                 title_var.set(current_text[:20])
         title_var.trace("w", validate_title)
 
-        # 简介输入
-        desc_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        desc_frame.pack(fill="both", expand=True, pady=(0, 8))
+        # 主题输入
+        topic_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        topic_frame.pack(fill="both", expand=True, pady=(0, 8))
 
-        desc_label = ctk.CTkLabel(desc_frame, text="小说简介:", width=70, anchor="w",
+        topic_label = ctk.CTkLabel(topic_frame, text="主题:", width=70, anchor="w",
                                 font=("Microsoft YaHei", 11, "bold"))
-        desc_label.pack(side="left")
+        topic_label.pack(side="left")
 
-        desc_text = ctk.CTkTextbox(desc_frame, height=160)
-        desc_text.pack(side="top", fill="both", expand=True, padx=(8, 0), pady=(3, 0))
-        if novel:
-            desc_text.insert("0.0", novel.description)
+        topic_text = ctk.CTkTextbox(topic_frame, height=160)
+        topic_text.pack(side="top", fill="both", expand=True, padx=(8, 0), pady=(3, 0))
+
+        # 主题占位符
+        topic_placeholder = "请输入小说主题，描述故事背景、主要情节和核心冲突..."
+
+        def set_topic_placeholder():
+            if not topic_text.get("0.0", "end").strip():
+                topic_text.delete("0.0", "end")
+                topic_text.insert("0.0", topic_placeholder)
+                topic_text.configure(text_color=("gray70", "gray50"))
+
+        def clear_topic_placeholder(event=None):
+            if topic_text.get("0.0", "end").strip() == topic_placeholder:
+                topic_text.delete("0.0", "end")
+                topic_text.configure(text_color=("black", "white"))
+
+        def check_topic_placeholder(event=None):
+            content = topic_text.get("0.0", "end").strip()
+            if not content:
+                set_topic_placeholder()
+
+        # 初始化占位符
+        if novel and novel.topic:
+            topic_text.insert("0.0", novel.topic)
+            topic_text.configure(text_color=("black", "white"))
+        else:
+            set_topic_placeholder()
+
+        # 绑定事件
+        topic_text.bind("<FocusIn>", clear_topic_placeholder)
+        topic_text.bind("<FocusOut>", check_topic_placeholder)
 
         # 封面选择
         cover_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -992,8 +1056,36 @@ class NovelManagerUI(ctk.CTkFrame):
                                   font=("Microsoft YaHei", 11, "bold"))
         cover_label.pack(side="left")
 
+        # 封面图片路径占位符
+        cover_placeholder = "选择或输入封面图片路径"
+
+        def set_cover_placeholder():
+            if not cover_var.get():
+                cover_entry.delete(0, "end")
+                cover_entry.insert(0, cover_placeholder)
+                cover_entry.configure(text_color=("gray70", "gray50"))
+
+        def clear_cover_placeholder(event=None):
+            if cover_entry.get() == cover_placeholder:
+                cover_entry.delete(0, "end")
+                cover_entry.configure(text_color=("black", "white"))
+
+        def check_cover_placeholder(event=None):
+            if not cover_var.get():
+                set_cover_placeholder()
+
         cover_entry = ctk.CTkEntry(cover_frame, textvariable=cover_var, height=32)
         cover_entry.pack(side="left", fill="x", expand=True, padx=(8, 5))
+
+        # 初始化占位符
+        if novel and novel.cover_image:
+            cover_entry.configure(text_color=("black", "white"))
+        else:
+            set_cover_placeholder()
+
+        # 绑定事件
+        cover_entry.bind("<FocusIn>", clear_cover_placeholder)
+        cover_entry.bind("<FocusOut>", check_cover_placeholder)
 
         def browse_cover():
             file_path = filedialog.askopenfilename(
@@ -1002,23 +1094,52 @@ class NovelManagerUI(ctk.CTkFrame):
             )
             if file_path:
                 cover_var.set(file_path)
+                cover_entry.configure(text_color=("black", "white"))
 
         browse_btn = ctk.CTkButton(cover_frame, text="浏览...", width=70, height=32,
                                   command=browse_cover)
         browse_btn.pack(side="right")
 
-        # 标签输入
-        tags_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        tags_frame.pack(fill="x", pady=(0, 8))
+        # 类型输入
+        genre_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        genre_frame.pack(fill="x", pady=(0, 8))
 
-        tags_label = ctk.CTkLabel(tags_frame, text="标签:", width=70, anchor="w",
+        genre_label = ctk.CTkLabel(genre_frame, text="类型:", width=70, anchor="w",
                                 font=("Microsoft YaHei", 11, "bold"))
-        tags_label.pack(side="left")
+        genre_label.pack(side="left")
 
-        tags_var = ctk.StringVar(value=", ".join(novel.tags) if novel else "")
-        tags_entry = ctk.CTkEntry(tags_frame, textvariable=tags_var, 
-                                placeholder_text="多个标签用逗号分隔", height=32)
-        tags_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        # 类型占位符
+        genre_placeholder = "允许填写：玄幻、都市、科幻等"
+
+        def set_genre_placeholder():
+            if not genre_var.get():
+                genre_entry.delete(0, "end")
+                genre_entry.insert(0, genre_placeholder)
+                genre_entry.configure(text_color=("gray70", "gray50"))
+
+        def clear_genre_placeholder(event=None):
+            if genre_entry.get() == genre_placeholder:
+                genre_entry.delete(0, "end")
+                genre_entry.configure(text_color=("black", "white"))
+
+        def check_genre_placeholder(event=None):
+            if not genre_var.get():
+                set_genre_placeholder()
+
+        # 使用novel.genre作为默认值，如果没有则使用空字符串
+        genre_var = ctk.StringVar(value=novel.genre if novel else "")
+        genre_entry = ctk.CTkEntry(genre_frame, textvariable=genre_var, height=32)
+        genre_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+        # 初始化占位符
+        if novel and novel.genre:
+            genre_entry.configure(text_color=("black", "white"))
+        else:
+            set_genre_placeholder()
+
+        # 绑定事件
+        genre_entry.bind("<FocusIn>", clear_genre_placeholder)
+        genre_entry.bind("<FocusOut>", check_genre_placeholder)
 
         # 保存路径输入
         path_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -1036,8 +1157,36 @@ class NovelManagerUI(ctk.CTkFrame):
         else:
             default_path = os.path.abspath(os.path.join("data", "novels"))
         path_var = ctk.StringVar(value=default_path)
+        # 保存路径占位符
+        path_placeholder = "选择或输入小说保存路径"
+
+        def set_path_placeholder():
+            if not path_var.get():
+                path_entry.delete(0, "end")
+                path_entry.insert(0, path_placeholder)
+                path_entry.configure(text_color=("gray70", "gray50"))
+
+        def clear_path_placeholder(event=None):
+            if path_entry.get() == path_placeholder:
+                path_entry.delete(0, "end")
+                path_entry.configure(text_color=("black", "white"))
+
+        def check_path_placeholder(event=None):
+            if not path_var.get():
+                set_path_placeholder()
+
         path_entry = ctk.CTkEntry(path_frame, textvariable=path_var, height=32)
         path_entry.pack(side="left", fill="x", expand=True, padx=(8, 5))
+
+        # 初始化占位符
+        if novel and hasattr(novel, "save_path") and novel.save_path:
+            path_entry.configure(text_color=("black", "white"))
+        else:
+            set_path_placeholder()
+
+        # 绑定事件
+        path_entry.bind("<FocusIn>", clear_path_placeholder)
+        path_entry.bind("<FocusOut>", check_path_placeholder)
 
         def browse_path():
             from tkinter import filedialog as tk_filedialog
@@ -1047,6 +1196,7 @@ class NovelManagerUI(ctk.CTkFrame):
             )
             if selected_path:
                 path_var.set(selected_path)
+                path_entry.configure(text_color=("black", "white"))
 
         browse_path_btn = ctk.CTkButton(path_frame, text="浏览...", width=70, height=32,
                                        command=browse_path)
@@ -1078,11 +1228,22 @@ class NovelManagerUI(ctk.CTkFrame):
 
         def on_save():
             title = title_var.get().strip()
-            description = desc_text.get("0.0", "end").strip()
+            topic = topic_text.get("0.0", "end").strip()
+            genre = genre_var.get().strip()
             cover = cover_var.get().strip()
-            tags_str = tags_var.get().strip()
-            tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()] if tags_str else []
             save_path = path_var.get().strip()
+
+            # 检查并排除占位符文本
+            if title == title_placeholder:
+                title = ""
+            if topic == topic_placeholder:
+                topic = ""
+            if genre == genre_placeholder:
+                genre = ""
+            if cover == cover_placeholder:
+                cover = ""
+            if save_path == path_placeholder:
+                save_path = ""
 
             if not title:
                 messagebox.showwarning("警告", "请输入小说标题")
@@ -1092,8 +1253,16 @@ class NovelManagerUI(ctk.CTkFrame):
                 messagebox.showwarning("警告", "小说标题不能超过20个字")
                 return
 
-            if not description:
-                messagebox.showwarning("警告", "请输入小说简介")
+            if not topic:
+                messagebox.showwarning("警告", "请输入主题")
+                return
+
+            if not genre:
+                messagebox.showwarning("警告", "请输入类型")
+                return
+
+            if not save_path:
+                messagebox.showwarning("警告", "请选择或输入保存路径")
                 return
 
             try:
@@ -1102,23 +1271,32 @@ class NovelManagerUI(ctk.CTkFrame):
                     self.manager.update_novel(
                         novel.novel_id,
                         title=title,
-                        description=description,
+                        topic=topic,
+                        description=topic,  # 同时更新description字段
+                        genre=genre,
                         cover_image=cover,
-                        tags=tags,
                         status=status_var.get() if status_var else novel.status,
                         save_path=save_path
                     )
-                    # 如果当前打开的小说是被编辑的小说，同步更新"小说参数"模块中的"小说标题"字段
+                    # 如果当前打开的小说是被编辑的小说，同步更新"小说参数"模块中的字段
                     if self.on_novel_opened and hasattr(self.master, 'current_novel_id') and self.master.current_novel_id == novel.novel_id:
                         if hasattr(self.master, 'title_var'):
                             self.master.title_var.set(title)
+                        if hasattr(self.master, 'topic_var'):
+                            self.master.topic_var.set(topic)
+                        if hasattr(self.master, 'genre_var'):
+                            self.master.genre_var.set(genre)
                     messagebox.showinfo("成功", "小说更新成功！")
+                    # 刷新小说列表，以显示最新的小说名称
+                    self._load_novels()
                 else:
                     # 新建模式
-                    self.manager.create_novel(title, description, cover, tags, save_path)
+                    new_novel = self.manager.create_novel(title, topic, genre, cover, save_path)
                     messagebox.showinfo("成功", "小说创建成功！")
+                    # 直接将新创建的小说添加到列表中，避免重新加载导致topic和genre被重置
+                    self.current_novels.insert(0, new_novel)
+                    self._refresh_novel_list()
                 
-                self._load_novels()
                 dialog.destroy()
             except Exception as e:
                 messagebox.showerror("错误", f"操作失败: {str(e)}")

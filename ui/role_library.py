@@ -593,7 +593,7 @@ class RoleLibrary:
         """从文件导入内容到右侧窗口"""
         filetypes = (
             ('文本文件', '*.txt'),
-            ('Word文档', '*.docx'),
+            ('Markdown文件', '*.md'),
             ('所有文件', '*.*')
         )
         
@@ -608,15 +608,9 @@ class RoleLibrary:
 
         try:
             content = ""
-            if file_path.endswith('.docx'):
-                # 处理Word文档
-                from docx import Document
-                doc = Document(file_path)
-                content = "\n".join([para.text for para in doc.paragraphs])
-            else:
-                # 处理普通文本文件
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+            # 处理文本文件和Markdown文件
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
 
             # 更新右侧文本框中
             for widget in right_panel.winfo_children():

@@ -46,9 +46,13 @@ def build_left_layout(self):
 
 
     def update_word_count(event=None):
-        text = self.chapter_result.get("0.0", "end")
-        count = len(text) - 1  # 减去最后一个换行符
-        self.chapter_label.configure(text=f"本章内容（可编辑）  字数：{count}")
+        """更新章节字数统计"""
+        try:
+            text = self.chapter_result.get("0.0", "end")
+            count = len(text) - 1  # 减去最后一个换行符
+            self.chapter_label.configure(text=f"本章内容（可编辑）  字数：{count}")
+        except Exception as e:
+            print(f"更新字数统计时出错: {e}")
 
     self.chapter_result.bind("<KeyRelease>", update_word_count)
     self.chapter_result.bind("<ButtonRelease>", update_word_count)

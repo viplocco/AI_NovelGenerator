@@ -1,7 +1,7 @@
 # llm_adapters.py
 # -*- coding: utf-8 -*-
 import logging
-from typing import Optional
+from typing import Optional, Callable
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
 try:
     from google import genai
@@ -42,6 +42,19 @@ class BaseLLMAdapter:
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError("Subclasses must implement .invoke(prompt) method.")
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用LLM
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        raise NotImplementedError("Subclasses must implement .invoke_stream(prompt, callback) method.")
+
 class DeepSeekAdapter(BaseLLMAdapter):
     """
     适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）
@@ -70,6 +83,30 @@ class DeepSeekAdapter(BaseLLMAdapter):
             return ""
         return response.content
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用DeepSeek API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        from langchain_core.messages import HumanMessage
+
+        result = ""
+
+        # 使用langchain的stream方法
+        for chunk in self._client.stream([HumanMessage(content=prompt)]):
+            if chunk.content:
+                content = chunk.content
+                result += content
+                callback(content)  # 实时回调
+
+        return result
+
 class OpenAIAdapter(BaseLLMAdapter):
     """
     适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）
@@ -97,6 +134,30 @@ class OpenAIAdapter(BaseLLMAdapter):
             logging.warning("No response from OpenAIAdapter.")
             return ""
         return response.content
+
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用OpenAI API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        from langchain_core.messages import HumanMessage
+
+        result = ""
+
+        # 使用langchain的stream方法
+        for chunk in self._client.stream([HumanMessage(content=prompt)]):
+            if chunk.content:
+                content = chunk.content
+                result += content
+                callback(content)  # 实时回调
+
+        return result
 
 class GeminiAdapter(BaseLLMAdapter):
     """
@@ -157,6 +218,59 @@ class GeminiAdapter(BaseLLMAdapter):
             logging.error(f"Gemini API 调用失败: {e}")
             return ""
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用Gemini API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        result = ""
+
+        try:
+            if self.use_new_sdk:
+                # 使用新的 google.genai SDK
+                response = self._client.models.generate_content_stream(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                    ),
+                )
+
+                for chunk in response:
+                    if chunk.text:
+                        content = chunk.text
+                        result += content
+                        callback(content)
+            else:
+                # 使用旧的 google.generativeai SDK
+                generation_config = {
+                    "temperature": self.temperature,
+                    "max_output_tokens": self.max_tokens,
+                }
+                response = self._client.generate_content(
+                    prompt,
+                    generation_config=generation_config,
+                    stream=True  # 启用流式输出
+                )
+
+                for chunk in response:
+                    if chunk.text:
+                        content = chunk.text
+                        result += content
+                        callback(content)
+
+            return result
+        except Exception as e:
+            logging.error(f"Gemini API 流式调用失败: {e}")
+            return ""
+
 class AzureOpenAIAdapter(BaseLLMAdapter):
     """
     适配 Azure OpenAI 接口（使用 langchain.ChatOpenAI）
@@ -194,6 +308,30 @@ class AzureOpenAIAdapter(BaseLLMAdapter):
             return ""
         return response.content
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用Azure OpenAI API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        from langchain_core.messages import HumanMessage
+
+        result = ""
+
+        # 使用langchain的stream方法
+        for chunk in self._client.stream([HumanMessage(content=prompt)]):
+            if chunk.content:
+                content = chunk.content
+                result += content
+                callback(content)  # 实时回调
+
+        return result
+
 class OllamaAdapter(BaseLLMAdapter):
     """
     Ollama 同样有一个 OpenAI-like /v1/chat 接口，可直接使用 ChatOpenAI。
@@ -225,6 +363,30 @@ class OllamaAdapter(BaseLLMAdapter):
             return ""
         return response.content
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用Ollama API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        from langchain_core.messages import HumanMessage
+
+        result = ""
+
+        # 使用langchain的stream方法
+        for chunk in self._client.stream([HumanMessage(content=prompt)]):
+            if chunk.content:
+                content = chunk.content
+                result += content
+                callback(content)  # 实时回调
+
+        return result
+
 class MLStudioAdapter(BaseLLMAdapter):
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
         self.base_url = check_base_url(base_url)
@@ -252,6 +414,34 @@ class MLStudioAdapter(BaseLLMAdapter):
             return response.content
         except Exception as e:
             logging.error(f"ML Studio API 调用超时或失败: {e}")
+            return ""
+
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用ML Studio API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        from langchain_core.messages import HumanMessage
+
+        result = ""
+
+        try:
+            # 使用langchain的stream方法
+            for chunk in self._client.stream([HumanMessage(content=prompt)]):
+                if chunk.content:
+                    content = chunk.content
+                    result += content
+                    callback(content)  # 实时回调
+
+            return result
+        except Exception as e:
+            logging.error(f"ML Studio API 流式调用失败: {e}")
             return ""
 
 class AzureAIAdapter(BaseLLMAdapter):
@@ -304,6 +494,40 @@ class AzureAIAdapter(BaseLLMAdapter):
             logging.error(f"Azure AI Inference API 调用失败: {e}")
             return ""
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用Azure AI Inference API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        result = ""
+
+        try:
+            # 使用Azure AI的流式API
+            response = self._client.complete(
+                messages=[
+                    SystemMessage("You are a helpful assistant."),
+                    UserMessage(prompt)
+                ],
+                stream=True  # 启用流式输出
+            )
+
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    result += content
+                    callback(content)
+
+            return result
+        except Exception as e:
+            logging.error(f"Azure AI Inference API 流式调用失败: {e}")
+            return ""
+
 # 火山引擎实现
 class VolcanoEngineAIAdapter(BaseLLMAdapter):
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
@@ -337,6 +561,42 @@ class VolcanoEngineAIAdapter(BaseLLMAdapter):
             logging.error(f"火山引擎API调用超时或失败: {e}")
             return ""
 
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用火山引擎API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        result = ""
+
+        try:
+            # 使用OpenAI原生SDK的stream方法
+            stream = self._client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "你是DeepSeek，是一个 AI 人工智能助手"},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=True,
+                timeout=self.timeout
+            )
+
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    result += content
+                    callback(content)
+
+            return result
+        except Exception as e:
+            logging.error(f"火山引擎API 流式调用失败: {e}")
+            return ""
+
 class SiliconFlowAdapter(BaseLLMAdapter):
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
         self.base_url = check_base_url(base_url)
@@ -367,6 +627,42 @@ class SiliconFlowAdapter(BaseLLMAdapter):
             return response.choices[0].message.content
         except Exception as e:
             logging.error(f"硅基流动API调用超时或失败: {e}")
+            return ""
+
+    def invoke_stream(self, prompt: str, callback: Callable[[str], None]) -> str:
+        """
+        流式调用硅基流动API
+
+        参数:
+            prompt: 提示词
+            callback: 流式输出回调函数，接收每个token
+
+        返回:
+            完整的响应内容
+        """
+        result = ""
+
+        try:
+            # 使用OpenAI原生SDK的stream方法
+            stream = self._client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "你是DeepSeek，是一个 AI 人工智能助手"},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=True,
+                timeout=self.timeout
+            )
+
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    result += content
+                    callback(content)
+
+            return result
+        except Exception as e:
+            logging.error(f"硅基流动API 流式调用失败: {e}")
             return ""
 
 def create_llm_adapter(

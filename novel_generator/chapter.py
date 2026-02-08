@@ -632,4 +632,89 @@ def generate_chapter_draft(
     clear_file_content(chapter_file)
     save_string_to_txt(chapter_content, chapter_file)
     logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+
+def generate_chapter_draft_stream(
+    api_key: str,
+    base_url: str,
+    model_name: str,
+    filepath: str,
+    novel_number: int,
+    word_number: int,
+    temperature: float,
+    user_guidance: str,
+    characters_involved: str,
+    key_items: str,
+    scene_location: str,
+    time_constraint: str,
+    embedding_api_key: str,
+    embedding_url: str,
+    embedding_interface_format: str,
+    embedding_model_name: str,
+    embedding_retrieval_k: int = 2,
+    interface_format: str = "openai",
+    max_tokens: int = 2048,
+    timeout: int = 600,
+    custom_prompt_text: str = None,
+    stream_callback: callable = None
+) -> str:
+    """
+    生成章节草稿，支持流式输出
+    
+    参数:
+        stream_callback: 流式输出回调函数，接收每个token
+    
+    返回:
+        完整的章节内容
+    """
+    if custom_prompt_text is None:
+        prompt_text = build_chapter_prompt(
+            api_key=api_key,
+            base_url=base_url,
+            model_name=model_name,
+            filepath=filepath,
+            novel_number=novel_number,
+            word_number=word_number,
+            temperature=temperature,
+            user_guidance=user_guidance,
+            characters_involved=characters_involved,
+            key_items=key_items,
+            scene_location=scene_location,
+            time_constraint=time_constraint,
+            embedding_api_key=embedding_api_key,
+            embedding_url=embedding_url,
+            embedding_interface_format=embedding_interface_format,
+            embedding_model_name=embedding_model_name,
+            embedding_retrieval_k=embedding_retrieval_k,
+            interface_format=interface_format,
+            max_tokens=max_tokens,
+            timeout=timeout
+        )
+    else:
+        prompt_text = custom_prompt_text
+
+    chapters_dir = os.path.join(filepath, "chapters")
+    os.makedirs(chapters_dir, exist_ok=True)
+
+    llm_adapter = create_llm_adapter(
+        interface_format=interface_format,
+        base_url=base_url,
+        model_name=model_name,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout
+    )
+
+    # 使用流式输出
+    from novel_generator.stream_utils import invoke_with_cleaning_stream
+    chapter_content = invoke_with_cleaning_stream(llm_adapter, prompt_text, stream_callback)
+    
+    if not chapter_content.strip():
+        logging.warning("Generated chapter draft is empty.")
+    
+    chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
+    clear_file_content(chapter_file)
+    save_string_to_txt(chapter_content, chapter_file)
+    logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+    
     return chapter_content

@@ -7,7 +7,9 @@ import os
 import json
 import logging
 import traceback
+from typing import Optional, Callable
 from novel_generator.common import invoke_with_cleaning
+from novel_generator.stream_utils import invoke_with_cleaning_stream
 from llm_adapters import create_llm_adapter
 from prompt_definitions import (
     core_seed_prompt,
@@ -58,14 +60,16 @@ def Novel_architecture_generate(
     user_guidance: str = "",  # 新增参数
     temperature: float = 0.7,
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 600,
+    stream_callback: Optional[Callable[[str], None]] = None  # 新增流式输出回调
 ) -> None:
     """
     依次调用:
       1. core_seed_prompt
-      2. character_dynamics_prompt
-      3. world_building_prompt
-      4. plot_architecture_prompt
+      2. world_building_prompt
+      3. character_design_prompt
+      4. character_state_prompt
+      5. plot_architecture_prompt
     若在中间任何一步报错且重试多次失败，则将已经生成的内容写入 partial_architecture.json 并退出；
     下次调用时可从该步骤继续。
     最终输出 Novel_architecture.txt
@@ -95,7 +99,16 @@ def Novel_architecture_generate(
             word_number=word_number,
             user_guidance=user_guidance  # 修复：添加内容指导
         )
-        core_seed_result = invoke_with_cleaning(llm_adapter, prompt_core)
+
+        # 使用流式输出
+        core_seed_result = ""
+        def on_stream_core(text: str):
+            nonlocal core_seed_result
+            core_seed_result += text
+            if stream_callback:
+                stream_callback(text)
+
+        core_seed_result = invoke_with_cleaning_stream(llm_adapter, prompt_core, on_stream_core)
         if not core_seed_result.strip():
             logging.warning("core_seed_prompt generation failed and returned empty.")
             save_partial_architecture_data(filepath, partial_data)
@@ -104,47 +117,23 @@ def Novel_architecture_generate(
         save_partial_architecture_data(filepath, partial_data)
     else:
         logging.info("Step1 already done. Skipping...")
-    # Step2: 角色动力学
-    if "character_dynamics_result" not in partial_data:
-        logging.info("Step2: Generating character_dynamics_prompt ...")
-        prompt_character = character_dynamics_prompt.format(
-            core_seed=partial_data["core_seed_result"].strip(),
-            user_guidance=user_guidance
-        )
-        character_dynamics_result = invoke_with_cleaning(llm_adapter, prompt_character)
-        if not character_dynamics_result.strip():
-            logging.warning("character_dynamics_prompt generation failed.")
-            save_partial_architecture_data(filepath, partial_data)
-            return
-        partial_data["character_dynamics_result"] = character_dynamics_result
-        save_partial_architecture_data(filepath, partial_data)
-    else:
-        logging.info("Step2 already done. Skipping...")
-    # 生成初始角色状态
-    if "character_dynamics_result" in partial_data and "character_state_result" not in partial_data:
-        logging.info("Generating initial character state from character dynamics ...")
-        prompt_char_state_init = create_character_state_prompt.format(
-            character_dynamics=partial_data["character_dynamics_result"].strip()
-        )
-        character_state_init = invoke_with_cleaning(llm_adapter, prompt_char_state_init)
-        if not character_state_init.strip():
-            logging.warning("create_character_state_prompt generation failed.")
-            save_partial_architecture_data(filepath, partial_data)
-            return
-        partial_data["character_state_result"] = character_state_init
-        character_state_file = os.path.join(filepath, "character_state.txt")
-        clear_file_content(character_state_file)
-        save_string_to_txt(character_state_init, character_state_file)
-        save_partial_architecture_data(filepath, partial_data)
-        logging.info("Initial character state created and saved.")
-    # Step3: 世界观
+    # Step2: 世界观
     if "world_building_result" not in partial_data:
-        logging.info("Step3: Generating world_building_prompt ...")
+        logging.info("Step2: Generating world_building_prompt ...")
         prompt_world = world_building_prompt.format(
             core_seed=partial_data["core_seed_result"].strip(),
             user_guidance=user_guidance  # 修复：添加用户指导
         )
-        world_building_result = invoke_with_cleaning(llm_adapter, prompt_world)
+
+        # 使用流式输出
+        world_building_result = ""
+        def on_stream_world(text: str):
+            nonlocal world_building_result
+            world_building_result += text
+            if stream_callback:
+                stream_callback(text)
+
+        world_building_result = invoke_with_cleaning_stream(llm_adapter, prompt_world, on_stream_world)
         if not world_building_result.strip():
             logging.warning("world_building_prompt generation failed.")
             save_partial_architecture_data(filepath, partial_data)
@@ -152,17 +141,87 @@ def Novel_architecture_generate(
         partial_data["world_building_result"] = world_building_result
         save_partial_architecture_data(filepath, partial_data)
     else:
+        logging.info("Step2 already done. Skipping...")
+    # Step3: 角色动力学
+    if "character_design_result" not in partial_data:
+        logging.info("Step3: Generating character_design_prompt ...")
+        prompt_character = character_dynamics_prompt.format(
+            core_seed=partial_data["core_seed_result"].strip(),
+            world_building=partial_data["world_building_result"].strip(),
+            user_guidance=user_guidance
+        )
+
+        # 使用流式输出
+        character_design_result = ""
+        def on_stream_character(text: str):
+            nonlocal character_design_result
+            character_design_result += text
+            if stream_callback:
+                stream_callback(text)
+
+        character_design_result = invoke_with_cleaning_stream(llm_adapter, prompt_character, on_stream_character)
+        if not character_design_result.strip():
+            logging.warning("character_design_prompt generation failed.")
+            save_partial_architecture_data(filepath, partial_data)
+            return
+        partial_data["character_design_result"] = character_design_result
+        save_partial_architecture_data(filepath, partial_data)
+    else:
         logging.info("Step3 already done. Skipping...")
+    # Step3.1: 角色状态表
+    if "character_design_result" in partial_data and "character_state_result" not in partial_data:
+        logging.info("Step3.1: Generating character_state_prompt ...")
+
+        # 获取最新章节正文
+        from novel_generator.architecture_wizard import get_latest_chapter_text
+        latest_chapter = get_latest_chapter_text(filepath)
+
+        prompt_char_state_init = create_character_state_prompt.format(
+            core_seed=partial_data["core_seed_result"].strip(),
+            world_building=partial_data["world_building_result"].strip(),
+            character_dynamics=partial_data["character_design_result"].strip(),
+            latest_chapter=latest_chapter if latest_chapter else "（暂无章节正文）",
+            user_guidance=user_guidance
+        )
+
+        # 使用流式输出
+        character_state_init = ""
+        def on_stream_state(text: str):
+            nonlocal character_state_init
+            character_state_init += text
+            if stream_callback:
+                stream_callback(text)
+
+        character_state_init = invoke_with_cleaning_stream(llm_adapter, prompt_char_state_init, on_stream_state)
+        if not character_state_init.strip():
+            logging.warning("character_state_prompt generation failed.")
+            save_partial_architecture_data(filepath, partial_data)
+            return
+        partial_data["character_state_result"] = character_state_init
+        character_state_file = os.path.join(filepath, "character_state.txt")
+        clear_file_content(character_state_file)
+        save_string_to_txt(character_state_init, character_state_file)
+        save_partial_architecture_data(filepath, partial_data)
+        logging.info("Character state created and saved.")
     # Step4: 三幕式情节
     if "plot_arch_result" not in partial_data:
         logging.info("Step4: Generating plot_architecture_prompt ...")
         prompt_plot = plot_architecture_prompt.format(
             core_seed=partial_data["core_seed_result"].strip(),
-            character_dynamics=partial_data["character_dynamics_result"].strip(),
+            character_dynamics=partial_data["character_design_result"].strip(),
             world_building=partial_data["world_building_result"].strip(),
             user_guidance=user_guidance  # 修复：添加用户指导
         )
-        plot_arch_result = invoke_with_cleaning(llm_adapter, prompt_plot)
+
+        # 使用流式输出
+        plot_arch_result = ""
+        def on_stream_plot(text: str):
+            nonlocal plot_arch_result
+            plot_arch_result += text
+            if stream_callback:
+                stream_callback(text)
+
+        plot_arch_result = invoke_with_cleaning_stream(llm_adapter, prompt_plot, on_stream_plot)
         if not plot_arch_result.strip():
             logging.warning("plot_architecture_prompt generation failed.")
             save_partial_architecture_data(filepath, partial_data)
@@ -173,7 +232,8 @@ def Novel_architecture_generate(
         logging.info("Step4 already done. Skipping...")
 
     core_seed_result = partial_data["core_seed_result"]
-    character_dynamics_result = partial_data["character_dynamics_result"]
+    character_design_result = partial_data["character_design_result"]
+    character_state_result = partial_data["character_state_result"]
     world_building_result = partial_data["world_building_result"]
     plot_arch_result = partial_data["plot_arch_result"]
 
@@ -183,7 +243,9 @@ def Novel_architecture_generate(
         "#=== 1) 核心种子 ===\n"
         f"{core_seed_result}\n\n"
         "#=== 2) 角色动力学 ===\n"
-        f"{character_dynamics_result}\n\n"
+        f"{character_design_result}\n\n"
+        "#=== 2.1) 角色状态表 ===\n"
+        f"{character_state_result}\n\n"
         "#=== 3) 世界观 ===\n"
         f"{world_building_result}\n\n"
         "#=== 4) 三幕式情节架构 ===\n"

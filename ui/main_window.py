@@ -46,7 +46,16 @@ class NovelGeneratorGUI:
                 self.master.iconbitmap("icon.ico")
         except Exception:
             pass
-        self.master.geometry("1350x840")
+        # 获取屏幕尺寸
+        screen_width = self.master.winfo_screenwidth()
+        screen_height = self.master.winfo_screenheight()
+        
+        # 计算居中位置
+        x = (screen_width - 1350) // 2
+        y = (screen_height - 840) // 2
+        
+        # 设置窗口位置和大小，使其居中
+        self.master.geometry(f'1350x840+{x}+{y}')
         # 设置窗口的最小尺寸
         self.master.minsize(800, 600)
 
@@ -147,6 +156,10 @@ class NovelGeneratorGUI:
         build_character_tab(self)
         build_summary_tab(self)
         build_chapters_tab(self)
+        
+        # 初始化按钮状态
+        self.update_step_buttons_state()
+        self.update_optional_buttons_state()
         # 添加"小说管理"tab
         self.novel_manager_tab = self.tabview.add("小说管理")
         # 绑定tab切换事件
@@ -216,6 +229,27 @@ class NovelGeneratorGUI:
         self.chapter_result.delete("0.0", "end")
         self.chapter_result.insert("0.0", text)
         self.chapter_result.see("end")
+
+    def update_word_count(self, event=None):
+        """更新章节字数统计"""
+        try:
+            text = self.chapter_result.get("0.0", "end")
+            count = len(text) - 1  # 减去最后一个换行符
+            self.chapter_label.configure(text=f"本章内容（可编辑）  字数：{count}")
+        except Exception as e:
+            print(f"更新字数统计时出错: {e}")
+
+    def set_chapter_editable(self, editable: bool):
+        """设置章节文本框是否可编辑
+        
+        参数:
+            editable: True表示可编辑，False表示只读
+        """
+        try:
+            state = "normal" if editable else "disabled"
+            self.chapter_result.configure(state=state)
+        except Exception as e:
+            print(f"设置文本框编辑状态时出错: {e}")
     
     def test_llm_config(self):
         """
@@ -228,7 +262,7 @@ class NovelGeneratorGUI:
         temperature = self.temperature_var.get()
         max_tokens = self.max_tokens_var.get()
         timeout = self.timeout_var.get()
-
+        
         test_llm_config(
             interface_format=interface_format,
             api_key=api_key,
@@ -240,6 +274,84 @@ class NovelGeneratorGUI:
             log_func=self.safe_log,
             handle_exception_func=self.handle_exception
         )
+
+    def update_step_buttons_state(self):
+        """更新步骤按钮状态
+        
+        根据当前小说的生成进度，更新步骤按钮的启用/禁用状态
+        """
+        try:
+            from ui.button_state_helper import (
+                is_architecture_generated,
+                is_directory_generated,
+                is_chapter_draft_generated
+            )
+            
+            # 检查各步骤是否完成
+            has_filepath = bool(self.filepath_var.get().strip())
+            arch_generated = is_architecture_generated(self.filepath_var)
+            dir_generated = is_directory_generated(self.filepath_var)
+            draft_generated = is_chapter_draft_generated(
+                self.filepath_var, 
+                self.chapter_num_var, 
+                self.safe_get_int
+            )
+            
+            # 步骤1：始终允许（只要设置了保存路径）
+            state1 = "normal" if has_filepath else "disabled"
+            if hasattr(self, 'btn_generate_architecture'):
+                self.btn_generate_architecture.configure(state=state1)
+            
+            # 步骤2：只有步骤1完成后允许
+            state2 = "normal" if arch_generated else "disabled"
+            if hasattr(self, 'btn_generate_directory'):
+                self.btn_generate_directory.configure(state=state2)
+            
+            # 步骤3：只有步骤1和步骤2完成后允许
+            state3 = "normal" if (arch_generated and dir_generated) else "disabled"
+            if hasattr(self, 'btn_generate_chapter'):
+                self.btn_generate_chapter.configure(state=state3)
+            
+            # 步骤4：只有步骤1、2、3完成后允许
+            state4 = "normal" if (arch_generated and dir_generated and draft_generated) else "disabled"
+            if hasattr(self, 'btn_finalize_chapter'):
+                self.btn_finalize_chapter.configure(state=state4)
+        except Exception as e:
+            print(f"更新步骤按钮状态时出错: {e}")
+
+    def update_optional_buttons_state(self):
+        """更新小说参数模块按钮状态
+        
+        根据当前小说的生成进度，更新小说参数模块按钮的启用/禁用状态
+        """
+        try:
+            from ui.button_state_helper import (
+                is_architecture_generated,
+                is_directory_generated
+            )
+            
+            arch_generated = is_architecture_generated(self.filepath_var)
+            dir_generated = is_directory_generated(self.filepath_var)
+            
+            # 一致性审校、导入知识库、清空向量库：架构已生成后允许
+            state_arch = "normal" if arch_generated else "disabled"
+            if hasattr(self, 'btn_check_consistency'):
+                self.btn_check_consistency.configure(state=state_arch)
+            if hasattr(self, 'btn_import_knowledge'):
+                self.btn_import_knowledge.configure(state=state_arch)
+            if hasattr(self, 'btn_clear_vectorstore'):
+                self.btn_clear_vectorstore.configure(state=state_arch)
+            
+            # 查看剧情要点：目录已生成后允许
+            state_dir = "normal" if dir_generated else "disabled"
+            if hasattr(self, 'plot_arcs_btn'):
+                self.plot_arcs_btn.configure(state=state_dir)
+            
+            # 角色库：始终允许
+            if hasattr(self, 'role_library_btn'):
+                self.role_library_btn.configure(state="normal")
+        except Exception as e:
+            print(f"更新小说参数按钮状态时出错: {e}")
 
     def test_embedding_config(self):
         """
@@ -403,8 +515,6 @@ class NovelGeneratorGUI:
     save_current_chapter = save_current_chapter
     prev_chapter = prev_chapter
     next_chapter = next_chapter
-    test_llm_config = test_llm_config
-    test_embedding_config = test_embedding_config
     browse_folder = browse_folder
 
     # ----------------- 小说管理相关方法 -----------------
@@ -415,6 +525,10 @@ class NovelGeneratorGUI:
         novel = self.novel_manager.get_novel(novel.novel_id)
         if not novel:
             return
+
+        # 先设置加载标志，防止在加载过程中触发保存
+        self._loading_novel_params = True
+
         # 设置小说路径（优先使用save_path，如果没有则使用默认路径）
         if hasattr(novel, "save_path") and novel.save_path:
             novel_path = novel.save_path
@@ -431,6 +545,15 @@ class NovelGeneratorGUI:
         # 加载小说标题
         if hasattr(self, 'title_var'):
             self.title_var.set(novel.title)
+        # 加载主题
+        if hasattr(self, 'topic_text'):
+            self.topic_text.delete("0.0", "end")
+            self.topic_text.insert("0.0", novel.topic)
+        if hasattr(self, 'topic_var'):
+            self.topic_var.set(novel.topic)
+        # 加载类型
+        if hasattr(self, 'genre_var'):
+            self.genre_var.set(novel.genre)
         # 加载小说参数到UI
         self._load_novel_params(novel)
         # 先加载小说数据
@@ -439,6 +562,9 @@ class NovelGeneratorGUI:
         self.tabview._segmented_button.grid()
         # 再切换到主功能页面
         self._show_main_view()
+
+        # 完成加载，清除加载标志
+        self._loading_novel_params = False
 
     def _on_tab_changed(self, event=None):
         """处理tab切换事件"""
@@ -503,6 +629,7 @@ class NovelGeneratorGUI:
         # 保存主题
         if hasattr(self, 'topic_text'):
             novel.topic = self.topic_text.get("0.0", "end").strip()
+            novel.description = novel.topic  # 同时更新description字段
 
         # 保存类型
         if hasattr(self, 'genre_var'):
@@ -555,22 +682,11 @@ class NovelGeneratorGUI:
 
     def _load_novel_params(self, novel):
         """加载小说参数到UI"""
-        # 临时禁用自动保存，避免在加载过程中触发保存
-        self._loading_novel_params = True
-
         # 加载小说标题
         if hasattr(novel, 'title') and hasattr(self, 'title_var'):
             self.title_var.set(novel.title)
 
-        # 加载主题
-        if hasattr(novel, 'topic') and hasattr(self, 'topic_text'):
-            self.topic_text.delete("0.0", "end")
-            self.topic_text.insert("0.0", novel.topic)
-            self.topic_var.set(novel.topic)
-
-        # 加载类型
-        if hasattr(novel, 'genre') and hasattr(self, 'genre_var'):
-            self.genre_var.set(novel.genre)
+        # 主题和类型已在_on_novel_opened方法中加载
 
         # 加载章节数
         if hasattr(novel, 'num_chapters') and hasattr(self, 'num_chapters_var'):
@@ -579,9 +695,6 @@ class NovelGeneratorGUI:
         # 加载每章字数
         if hasattr(novel, 'word_number') and hasattr(self, 'word_number_var'):
             self.word_number_var.set(str(novel.word_number))
-
-        # 加载完成，启用自动保存
-        self._loading_novel_params = False
 
         # 加载章节号
         if hasattr(novel, 'chapter_num') and hasattr(self, 'chapter_num_var'):

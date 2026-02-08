@@ -10,6 +10,9 @@ from utils import read_file, save_string_to_txt, clear_file_content
 from novel_generator import (
     Novel_architecture_generate,
     Chapter_blueprint_generate,
+    Chapter_blueprint_generate_range,
+    check_existing_chapters,
+    remove_chapter_ranges,
     generate_chapter_draft,
     finalize_chapter,
     import_knowledge_file,
@@ -18,57 +21,201 @@ from novel_generator import (
 )
 from consistency_checker import check_consistency
 
+def show_directory_generation_dialog(master, max_chapters):
+    """
+    显示目录生成参数对话框
+    
+    参数:
+        master: 父窗口
+        max_chapters: 最大章节数
+    
+    返回:
+        dict: 包含 start_chapter, end_chapter, requirements 的字典
+              如果用户取消则返回 None
+    """
+    result = {"start_chapter": None, "end_chapter": None, "requirements": None}
+    event = threading.Event()
+    
+    def create_dialog():
+        dialog = ctk.CTkToplevel(master)
+        dialog.title("生成章节目录")
+        dialog.geometry("550x480")
+        dialog.transient(master)
+        dialog.grab_set()
+        # 居中显示弹窗
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+        y = (dialog.winfo_screenheight() // 2) - (height // 2)
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
+        
+        # 主框架（无填充色）
+        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # 章节范围框架（无填充色）
+        chapter_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        chapter_frame.pack(fill="x", pady=(0, 10))
+        
+        # 起始章节
+        ctk.CTkLabel(chapter_frame, text="起始章节:", font=("Microsoft YaHei", 11), fg_color="transparent").grid(row=0, column=0, padx=5, pady=8, sticky="w")
+        start_entry = ctk.CTkEntry(chapter_frame, font=("Microsoft YaHei", 11), width=100)
+        start_entry.insert(0, "1")
+        start_entry.grid(row=0, column=1, padx=5, pady=8)
+        
+        # 结束章节
+        ctk.CTkLabel(chapter_frame, text="结束章节:", font=("Microsoft YaHei", 11), fg_color="transparent").grid(row=0, column=2, padx=5, pady=8, sticky="w")
+        end_entry = ctk.CTkEntry(chapter_frame, font=("Microsoft YaHei", 11), width=100)
+        end_entry.insert(0, str(max_chapters))
+        end_entry.grid(row=0, column=3, padx=5, pady=8)
+        
+        # 生成要求标签
+        ctk.CTkLabel(main_frame, text="生成要求:", font=("Microsoft YaHei", 11), fg_color="transparent").pack(anchor="w", pady=(5, 3))
+        
+        # 文本框容器（无填充色）
+        text_container = ctk.CTkFrame(main_frame, fg_color="transparent")
+        text_container.pack(fill="both", expand=True, pady=(0, 5))
+        
+        # 生成要求文本框
+        requirements_text = ctk.CTkTextbox(text_container, font=("Microsoft YaHei", 11))
+        requirements_text.pack(fill="both", expand=True)
+        
+        # 字数统计标签（另起一行）
+        wordcount_label = ctk.CTkLabel(main_frame, text="字数：0", font=("Microsoft YaHei", 10), fg_color="transparent")
+        wordcount_label.pack(anchor="e", pady=(0, 10))
+        
+        def update_word_count(event=None):
+            text = requirements_text.get("0.0", "end-1c")
+            text_length = len(text)
+            wordcount_label.configure(text=f"字数：{text_length}")
+        
+        requirements_text.bind("<KeyRelease>", update_word_count)
+        requirements_text.bind("<ButtonRelease>", update_word_count)
+        update_word_count()
+        
+        # 按钮框架
+        button_frame = ctk.CTkFrame(main_frame)
+        button_frame.pack(fill="x", pady=(5, 0))
+        
+        def on_confirm():
+            try:
+                start = int(start_entry.get().strip())
+                end = int(end_entry.get().strip())
+                
+                if start < 1:
+                    messagebox.showwarning("输入错误", "起始章节必须大于等于1")
+                    return
+                if end > max_chapters:
+                    messagebox.showwarning("输入错误", f"结束章节不能大于总章节数({max_chapters})")
+                    return
+                if start > end:
+                    messagebox.showwarning("输入错误", "起始章节不能大于结束章节")
+                    return
+                
+                result["start_chapter"] = start
+                result["end_chapter"] = end
+                result["requirements"] = requirements_text.get("0.0", "end").strip()
+                dialog.destroy()
+                event.set()
+            except ValueError:
+                messagebox.showwarning("输入错误", "请输入有效的章节号")
+        
+        def on_cancel():
+            result["start_chapter"] = None
+            result["end_chapter"] = None
+            result["requirements"] = None
+            dialog.destroy()
+            event.set()
+        
+        btn_confirm = ctk.CTkButton(button_frame, text="确认", font=("Microsoft YaHei", 11), height=32, command=on_confirm)
+        btn_confirm.pack(side="left", padx=(0, 8), expand=True, fill="x")
+        
+        btn_cancel = ctk.CTkButton(button_frame, text="取消", font=("Microsoft YaHei", 11), height=32, command=on_cancel)
+        btn_cancel.pack(side="left", expand=True, fill="x")
+        
+        dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+    
+    master.after(0, create_dialog)
+    event.wait()
+    
+    if result["start_chapter"] is None:
+        return None
+    return result
+
 def generate_novel_architecture_ui(self):
     filepath = self.filepath_var.get().strip()
     if not filepath:
         messagebox.showwarning("警告", "请先选择保存文件路径")
         return
 
-    def task():
-        confirm = messagebox.askyesno("确认", "确定要生成小说架构吗？")
-        if not confirm:
+    # 禁用按钮
+    self.disable_button_safe(self.btn_generate_architecture)
+
+    try:
+        interface_format = self.interface_format_var.get().strip()
+        api_key = self.api_key_var.get().strip()
+        base_url = self.base_url_var.get().strip()
+        model_name = self.model_name_var.get().strip()
+        temperature = self.temperature_var.get()
+        max_tokens = self.max_tokens_var.get()
+        timeout_val = self.safe_get_int(self.timeout_var, 600)
+
+        topic = self.topic_text.get("0.0", "end").strip()
+        genre = self.genre_var.get().strip()
+        num_chapters = self.safe_get_int(self.num_chapters_var, 10)
+        word_number = self.safe_get_int(self.word_number_var, 3000)
+        # 获取全局用户指导
+        global_guidance = self.user_guide_text.get("0.0", "end").strip()
+
+        # 创建向导弹窗
+        from ui.architecture_wizard_ui import ArchitectureWizardUI
+
+        def on_complete(success=False):
+            """向导关闭后的回调
+
+            参数:
+                success: 是否成功完成（True=完成，False=取消）
+            """
+            if success:
+                # 成功完成，显示日志并加载文件
+                self.safe_log("✅ 小说架构生成完成。请在 '小说架构' 标签页查看或编辑。")
+                self.load_novel_architecture()
+                # 更新按钮状态
+                self.update_step_buttons_state()
+                self.update_optional_buttons_state()
+            else:
+                # 用户取消，只显示提示
+                self.safe_log("⏸️ 架构生成已取消。已生成的内容已保存到partial_architecture.json")
+
+            # 启用按钮
             self.enable_button_safe(self.btn_generate_architecture)
-            return
 
-        self.disable_button_safe(self.btn_generate_architecture)
-        try:
-            interface_format = self.interface_format_var.get().strip()
-            api_key = self.api_key_var.get().strip()
-            base_url = self.base_url_var.get().strip()
-            model_name = self.model_name_var.get().strip()
-            temperature = self.temperature_var.get()
-            max_tokens = self.max_tokens_var.get()
-            timeout_val = self.safe_get_int(self.timeout_var, 600)
+        # 显示向导弹窗
+        wizard = ArchitectureWizardUI(
+            master=self.master,
+            interface_format=interface_format,
+            api_key=api_key,
+            base_url=base_url,
+            llm_model=model_name,
+            topic=topic,
+            genre=genre,
+            number_of_chapters=num_chapters,
+            word_number=word_number,
+            filepath=filepath,
+            global_guidance=global_guidance,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout_val,
+            on_complete=on_complete
+        )
 
-            topic = self.topic_text.get("0.0", "end").strip()
-            genre = self.genre_var.get().strip()
-            num_chapters = self.safe_get_int(self.num_chapters_var, 10)
-            word_number = self.safe_get_int(self.word_number_var, 3000)
-            # 获取内容指导
-            user_guidance = self.user_guide_text.get("0.0", "end").strip()
+        # 设置窗口关闭协议
+        wizard.protocol("WM_DELETE_WINDOW", wizard.protocol_handler)
 
-            self.safe_log("开始生成小说架构...")
-            Novel_architecture_generate(
-                interface_format=interface_format,
-                api_key=api_key,
-                base_url=base_url,
-                llm_model=model_name,
-                topic=topic,
-                genre=genre,
-                number_of_chapters=num_chapters,
-                word_number=word_number,
-                filepath=filepath,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout_val,
-                user_guidance=user_guidance  # 添加内容指导参数
-            )
-            self.safe_log("✅ 小说架构生成完成。请在 'Novel Architecture' 标签页查看或编辑。")
-        except Exception:
-            self.handle_exception("生成小说架构时出错")
-        finally:
-            self.enable_button_safe(self.btn_generate_architecture)
-    threading.Thread(target=task, daemon=True).start()
+    except Exception:
+        self.handle_exception("打开架构生成向导时出错")
+        self.enable_button_safe(self.btn_generate_architecture)
 
 def generate_chapter_blueprint_ui(self):
     filepath = self.filepath_var.get().strip()
@@ -77,35 +224,65 @@ def generate_chapter_blueprint_ui(self):
         return
 
     def task():
-        if not messagebox.askyesno("确认", "确定要生成章节目录吗？"):
-            self.enable_button_safe(self.btn_generate_chapter)
+        number_of_chapters = self.safe_get_int(self.num_chapters_var, 10)
+        
+        # 显示对话框获取用户输入
+        dialog_result = show_directory_generation_dialog(self.master, number_of_chapters)
+        if not dialog_result:
+            self.enable_button_safe(self.btn_generate_directory)
             return
+        
+        start_chapter = dialog_result["start_chapter"]
+        end_chapter = dialog_result["end_chapter"]
+        generation_requirements = dialog_result["requirements"]
+        
+        # 检测重复章节
+        duplicate_chapters = check_existing_chapters(filepath, start_chapter, end_chapter)
+        
+        if duplicate_chapters:
+            chapter_list = ", ".join(f"第{ch}章" for ch in duplicate_chapters)
+            confirm_msg = f"检测到以下章节已存在目录：\n\n{chapter_list}\n\n是否删除这些章节的目录并重新生成？"
+            if not messagebox.askyesno("重复章节确认", confirm_msg):
+                self.enable_button_safe(self.btn_generate_directory)
+                return
+            
+            # 删除重复章节
+            self.safe_log(f"正在删除重复章节：{chapter_list}")
+            remove_chapter_ranges(filepath, [(start_chapter, end_chapter)])
+            self.safe_log(f"✅ 已删除第{start_chapter}章到第{end_chapter}章的目录")
+        
         self.disable_button_safe(self.btn_generate_directory)
         try:
             interface_format = self.interface_format_var.get().strip()
             api_key = self.api_key_var.get().strip()
             base_url = self.base_url_var.get().strip()
             model_name = self.model_name_var.get().strip()
-            number_of_chapters = self.safe_get_int(self.num_chapters_var, 10)
             temperature = self.temperature_var.get()
             max_tokens = self.max_tokens_var.get()
             timeout_val = self.safe_get_int(self.timeout_var, 600)
-            user_guidance = self.user_guide_text.get("0.0", "end").strip()  # 新增获取用户指导
+            user_guidance = self.user_guide_text.get("0.0", "end").strip()
 
-            self.safe_log("开始生成章节蓝图...")
-            Chapter_blueprint_generate(
+            self.safe_log(f"开始生成第{start_chapter}章到第{end_chapter}章的目录...")
+            
+            Chapter_blueprint_generate_range(
                 interface_format=interface_format,
                 api_key=api_key,
                 base_url=base_url,
                 llm_model=model_name,
-                number_of_chapters=number_of_chapters,
                 filepath=filepath,
+                start_chapter=start_chapter,
+                end_chapter=end_chapter,
+                number_of_chapters=number_of_chapters,
+                user_guidance=user_guidance,
+                generation_requirements=generation_requirements,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                timeout=timeout_val,
-                user_guidance=user_guidance  # 新增参数
+                timeout=timeout_val
             )
-            self.safe_log("✅ 章节蓝图生成完成。请在 'Chapter Blueprint' 标签页查看或编辑。")
+            self.safe_log(f"✅ 第{start_chapter}章到第{end_chapter}章目录生成完成。请在 '章节大纲' 标签页查看或编辑。")
+            # 更新按钮状态
+            self.update_step_buttons_state()
+            self.update_optional_buttons_state()
         except Exception:
             self.handle_exception("生成章节蓝图时出错")
         finally:
@@ -264,8 +441,29 @@ def generate_chapter_draft_ui(self):
                 return
 
             self.safe_log("开始生成章节草稿...")
-            from novel_generator.chapter import generate_chapter_draft
-            draft_text = generate_chapter_draft(
+            
+            # 清空章节文本框
+            self.master.after(0, lambda: self.chapter_result.delete("0.0", "end"))
+            
+            # 流式输出回调函数
+            def stream_callback(chunk: str):
+                """流式输出回调函数，实时更新UI显示"""
+                if chunk:
+                    # 添加调试日志
+                    print(f"stream_callback被调用，chunk长度: {len(chunk)}")
+                    # 在主线程中更新UI
+                    # 使用闭包捕获chunk的值
+                    def update_ui():
+                        self.chapter_result.insert("end", chunk)
+                        self.chapter_result.see("end")
+                        self.update_word_count()
+                    self.master.after(0, update_ui)
+                else:
+                    # 添加调试日志
+                    print("收到空chunk或None")
+            
+            from novel_generator.chapter import generate_chapter_draft_stream
+            draft_text = generate_chapter_draft_stream(
                 api_key=api_key,
                 base_url=base_url,
                 model_name=model_name,
@@ -286,11 +484,17 @@ def generate_chapter_draft_ui(self):
                 interface_format=interface_format,
                 max_tokens=max_tokens,
                 timeout=timeout_val,
-                custom_prompt_text=edited_prompt  # 使用用户编辑后的提示词
+                custom_prompt_text=edited_prompt,  # 使用用户编辑后的提示词
+                stream_callback=stream_callback  # 流式输出回调函数
             )
+            
+            # 恢复编辑功能
+            self.master.after(0, lambda: self.set_chapter_editable(True))
+            
             if draft_text:
                 self.safe_log(f"✅ 第{chap_num}章草稿生成完成。请在左侧查看或编辑。")
-                self.master.after(0, lambda: self.show_chapter_in_textbox(draft_text))
+                # 更新按钮状态
+                self.update_step_buttons_state()
             else:
                 self.safe_log("⚠️ 本章草稿生成失败或无内容。")
         except Exception:
@@ -374,6 +578,8 @@ def finalize_chapter_ui(self):
                 timeout=timeout_val
             )
             self.safe_log(f"✅ 第{chap_num}章定稿完成（已更新前文摘要、角色状态、向量库）。")
+            # 更新按钮状态
+            self.update_step_buttons_state()
 
             final_text = read_file(chapter_file)
             self.master.after(0, lambda: self.show_chapter_in_textbox(final_text))

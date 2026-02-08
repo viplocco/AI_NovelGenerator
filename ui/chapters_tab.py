@@ -80,9 +80,15 @@ def refresh_chapters_list(self):
         else:
             self.chapter_select_var.set("")
             self.chapter_view_text.delete("0.0", "end")
+    # 更新按钮状态
+    if hasattr(self, 'update_step_buttons_state'):
+        self.update_step_buttons_state()
 
 def on_chapter_selected(self, value):
     load_chapter_content(self, value)
+    # 更新按钮状态
+    if hasattr(self, 'update_step_buttons_state'):
+        self.update_step_buttons_state()
 
 def load_chapter_content(self, chapter_number_str):
     if not chapter_number_str:

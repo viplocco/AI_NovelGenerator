@@ -38,6 +38,10 @@ def parse_chapter_blueprint(blueprint_text: str):
     cognitive_pattern   = re.compile(r'^├──\s*认知颠覆[：:]\s*(.*)|^认知颠覆[：:]\s*(.*)')
     # 添加对"转折程度"字段的直接支持，将其映射到认知颠覆
     turn_pattern   = re.compile(r'^├──\s*转折程度[：:]\s*(.*)|^转折程度[：:]\s*(.*)')
+    # 添加对"主角修为"字段的直接支持
+    cultivation_pattern = re.compile(r'^├──\s*主角修为[：:]\s*(.*)|^主角修为[：:]\s*(.*)')
+    # 添加对"空间坐标"字段的直接支持
+    scene_pattern = re.compile(r'^├──\s*空间坐标[：:]\s*(.*)|^空间坐标[：:]\s*(.*)')
     summary_pattern = re.compile(r'^├──\s*(?:章节|本章)简述[：:]\s*(.*)|^(?:章节|本章)简述[：:]\s*(.*)')
 
     for chunk in chunks:
@@ -53,6 +57,9 @@ def parse_chapter_blueprint(blueprint_text: str):
         suspense_level   = ""
         foreshadowing    = ""
         plot_twist_level = ""
+        surface_cultivation = ""
+        actual_cultivation = ""
+        scene_location = ""
         chapter_summary  = ""
 
         # 先匹配第一行（或前几行），找到章号和标题
@@ -125,6 +132,28 @@ def parse_chapter_blueprint(blueprint_text: str):
 
                 continue
 
+            m_cultivation = cultivation_pattern.match(line)
+            if m_cultivation:
+                # 获取第一个非空的捕获组
+                cultivation_text = (m_cultivation.group(1) or m_cultivation.group(2)).strip() if (m_cultivation.group(1) or m_cultivation.group(2)) else ""
+                # 解析表面修为和实际实力
+                if "|" in cultivation_text:
+                    surface, actual = cultivation_text.split("|", 1)
+                    surface_cultivation = surface.strip().replace("表面修为", "").strip()
+                    actual_cultivation = actual.strip().replace("实际实力", "").strip()
+                else:
+                    surface_cultivation = cultivation_text
+                    actual_cultivation = cultivation_text
+
+                continue
+
+            m_scene = scene_pattern.match(line)
+            if m_scene:
+                # 获取第一个非空的捕获组
+                scene_location = (m_scene.group(1) or m_scene.group(2)).strip() if (m_scene.group(1) or m_scene.group(2)) else ""
+
+                continue
+
             m_summary = summary_pattern.match(line)
             if m_summary:
                 # 获取第一个非空的捕获组
@@ -140,6 +169,9 @@ def parse_chapter_blueprint(blueprint_text: str):
             "suspense_level": suspense_level,
             "foreshadowing": foreshadowing,
             "plot_twist_level": plot_twist_level,
+            "surface_cultivation": surface_cultivation,
+            "actual_cultivation": actual_cultivation,
+            "scene_location": scene_location,
             "chapter_summary": chapter_summary
         })
 
@@ -169,5 +201,8 @@ def get_chapter_info_from_blueprint(blueprint_text: str, target_chapter_number: 
         "suspense_level": "中等",
         "foreshadowing": "无特殊伏笔",
         "plot_twist_level": "★☆☆☆☆",
+        "surface_cultivation": "未设定",
+        "actual_cultivation": "未设定",
+        "scene_location": "未设定",
         "chapter_summary": f"第{target_chapter_number}章的剧情发展"
     }

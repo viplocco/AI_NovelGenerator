@@ -216,7 +216,6 @@ class GeminiEmbeddingAdapter(BaseEmbeddingAdapter):
 
         try:
             response = requests.post(url, json=payload)
-            print(response.text)
             response.raise_for_status()
             result = response.json()
             embedding_data = result.get("embedding", {})

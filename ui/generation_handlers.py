@@ -7,6 +7,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 import traceback
 from utils import read_file, save_string_to_txt, clear_file_content
+from ui.directory_tab import load_chapter_blueprint
 from novel_generator import (
     Novel_architecture_generate,
     Chapter_blueprint_generate,
@@ -223,72 +224,67 @@ def generate_chapter_blueprint_ui(self):
         messagebox.showwarning("警告", "请先选择保存文件路径")
         return
 
-    def task():
+    # 禁用按钮
+    self.disable_button_safe(self.btn_generate_directory)
+
+    try:
         number_of_chapters = self.safe_get_int(self.num_chapters_var, 10)
         
         # 显示对话框获取用户输入
-        dialog_result = show_directory_generation_dialog(self.master, number_of_chapters)
-        if not dialog_result:
-            self.enable_button_safe(self.btn_generate_directory)
-            return
-        
-        start_chapter = dialog_result["start_chapter"]
-        end_chapter = dialog_result["end_chapter"]
-        generation_requirements = dialog_result["requirements"]
-        
-        # 检测重复章节
-        duplicate_chapters = check_existing_chapters(filepath, start_chapter, end_chapter)
-        
-        if duplicate_chapters:
-            chapter_list = ", ".join(f"第{ch}章" for ch in duplicate_chapters)
-            confirm_msg = f"检测到以下章节已存在目录：\n\n{chapter_list}\n\n是否删除这些章节的目录并重新生成？"
-            if not messagebox.askyesno("重复章节确认", confirm_msg):
-                self.enable_button_safe(self.btn_generate_directory)
-                return
-            
-            # 删除重复章节
-            self.safe_log(f"正在删除重复章节：{chapter_list}")
-            remove_chapter_ranges(filepath, [(start_chapter, end_chapter)])
-            self.safe_log(f"✅ 已删除第{start_chapter}章到第{end_chapter}章的目录")
-        
-        self.disable_button_safe(self.btn_generate_directory)
-        try:
-            interface_format = self.interface_format_var.get().strip()
-            api_key = self.api_key_var.get().strip()
-            base_url = self.base_url_var.get().strip()
-            model_name = self.model_name_var.get().strip()
-            temperature = self.temperature_var.get()
-            max_tokens = self.max_tokens_var.get()
-            timeout_val = self.safe_get_int(self.timeout_var, 600)
-            user_guidance = self.user_guide_text.get("0.0", "end").strip()
+        # 创建完成回调函数
+        def on_complete(success=False):
+            """对话框关闭后的回调
 
-            self.safe_log(f"开始生成第{start_chapter}章到第{end_chapter}章的目录...")
-            
-            Chapter_blueprint_generate_range(
-                interface_format=interface_format,
-                api_key=api_key,
-                base_url=base_url,
-                llm_model=model_name,
-                filepath=filepath,
-                start_chapter=start_chapter,
-                end_chapter=end_chapter,
-                number_of_chapters=number_of_chapters,
-                user_guidance=user_guidance,
-                generation_requirements=generation_requirements,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout_val
-            )
-            self.safe_log(f"✅ 第{start_chapter}章到第{end_chapter}章目录生成完成。请在 '章节大纲' 标签页查看或编辑。")
-            # 更新按钮状态
-            self.update_step_buttons_state()
-            self.update_optional_buttons_state()
-        except Exception:
-            self.handle_exception("生成章节蓝图时出错")
-        finally:
-            self.enable_button_safe(self.btn_generate_directory)
-    threading.Thread(target=task, daemon=True).start()
+            参数:
+                success: 是否成功完成（True=完成，False=取消）
+            """
+            if success:
+                # 成功完成，显示日志并加载文件
+                self.safe_log("✅ 章节目录生成完成。请在 '章节大纲' 标签页查看或编辑。")
+                load_chapter_blueprint(self)
+                # 更新按钮状态
+                self.update_step_buttons_state()
+                self.update_optional_buttons_state()
+            else:
+                # 用户取消，只显示提示
+                self.safe_log("⏸️ 章节目录生成已取消。")
 
+            # 启用按钮
+            self.enable_button_safe(self.btn_generate_directory)
+
+        # 显示章节目录对话框
+        from ui.chapter_directory_dialog import ChapterDirectoryDialog
+        
+        # 获取配置参数
+        interface_format = self.interface_format_var.get().strip()
+        api_key = self.api_key_var.get().strip()
+        base_url = self.base_url_var.get().strip()
+        llm_model = self.model_name_var.get().strip()
+        temperature = self.temperature_var.get()
+        max_tokens = self.max_tokens_var.get()
+        timeout_val = self.safe_get_int(self.timeout_var, 600)
+        user_guidance = self.user_guide_text.get("0.0", "end").strip()
+        
+        dialog = ChapterDirectoryDialog(
+            master=self.master,
+            max_chapters=number_of_chapters,
+            filepath=filepath,
+            interface_format=interface_format,
+            api_key=api_key,
+            base_url=base_url,
+            llm_model=llm_model,
+            number_of_chapters=number_of_chapters,
+            user_guidance=user_guidance,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout_val,
+            on_complete=on_complete
+        )
+
+    except Exception:
+        self.handle_exception("打开章节目录生成对话框时出错")
+        self.enable_button_safe(self.btn_generate_directory)
+        
 def generate_chapter_draft_ui(self):
     filepath = self.filepath_var.get().strip()
     if not filepath:

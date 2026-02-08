@@ -19,6 +19,8 @@ summarize_recent_chapters_prompt = """\
 ├── 悬念密度：{suspense_level}
 ├── 伏笔操作：{foreshadowing}
 ├── 认知颠覆：{plot_twist_level}
+├── 主角修为：表面修为{surface_cultivation} | 实际实力{actual_cultivation}
+├── 空间坐标：{spatial_coordinates}
 └── 本章简述：{chapter_summary}
 
 下一章信息：
@@ -28,6 +30,8 @@ summarize_recent_chapters_prompt = """\
 ├── 悬念密度：{next_chapter_suspense_level}
 ├── 伏笔操作：{next_chapter_foreshadowing}
 ├── 认知颠覆：{next_chapter_plot_twist_level}
+├── 主角修为：表面修为{next_surface_cultivation} | 实际实力{next_actual_cultivation}
+├── 空间坐标：{next_spatial_coordinates}
 └── 本章简述：{next_chapter_summary}
 
 **上下文分析阶段**：
@@ -321,6 +325,8 @@ chapter_blueprint_prompt = """\
 - 情感基调迁移（如从怀疑→恐惧→决绝）
 - 伏笔设计（埋设/强化/回收）
 - 转折程度强度（1-5级）
+- 主角修为（表面修为与实际实力）
+- 空间坐标（区域范围/移动路线/具体地点）
 
 输出格式示例：
 第n章 - [标题]
@@ -329,7 +335,9 @@ chapter_blueprint_prompt = """\
 悬念密度：[紧凑/渐进/爆发/...]
 伏笔设计：埋设(A线索)→强化(B矛盾)...
 转折程度：★☆☆☆☆
-章节简述：[一句话概括]
+主角修为：表面修为[境界/等级] | 实际实力[隐藏境界/等级]
+空间坐标：[区域范围/移动路线/具体地点]
+章节简述：[1至2句话概括]
 
 第n+1章 - [标题]
 章节定位：[角色/事件/主题/...]
@@ -337,10 +345,12 @@ chapter_blueprint_prompt = """\
 悬念密度：[紧凑/渐进/爆发/...]
 伏笔设计：埋设(A线索)→强化(B矛盾)...
 转折程度：★☆☆☆☆
-章节简述：[一句话概括]
+主角修为：表面修为[境界/等级] | 实际实力[隐藏境界/等级]
+空间坐标：[区域范围/移动路线/具体地点]
+章节简述：[1至2句话概括]
 
 要求：
-- 使用精炼语言描述，每章字数控制在100字以内。
+- 使用精炼语言描述，每章字数控制在150字以内。
 - 合理安排节奏，确保整体悬念曲线的连贯性。
 - 在生成{number_of_chapters}章前不要出现结局章节。
 
@@ -374,6 +384,8 @@ chunked_chapter_blueprint_prompt = """\
 - 情感基调迁移（如从怀疑→恐惧→决绝）
 - 伏笔设计（埋设/强化/回收）
 - 转折程度强度（1-5级）
+- 主角修为（表面修为与实际实力）
+- 空间坐标（区域范围/移动路线/具体地点）
 
 输出格式示例：
 第n章 - [标题]
@@ -382,7 +394,9 @@ chunked_chapter_blueprint_prompt = """\
 悬念密度：[紧凑/渐进/爆发/...]
 伏笔设计：埋设(A线索)→强化(B矛盾)...
 转折程度：★☆☆☆☆
-章节简述：[一句话概括]
+主角修为：表面修为[境界/等级] | 实际实力[隐藏境界/等级]
+空间坐标：[区域范围/移动路线/具体地点]
+章节简述：[1至2句话概括]
 
 第n+1章 - [标题]
 章节定位：[角色/事件/主题/...]
@@ -390,7 +404,9 @@ chunked_chapter_blueprint_prompt = """\
 悬念密度：[紧凑/渐进/爆发/...]
 伏笔设计：埋设(A线索)→强化(B矛盾)...
 转折程度：★☆☆☆☆
-章节简述：[一句话概括]
+主角修为：表面修为[境界/等级] | 实际实力[隐藏境界/等级]
+空间坐标：[区域范围/移动路线/具体地点]
+章节简述：[1至2句话概括]
 
 要求：
 - 使用精炼语言描述，每章字数控制在100字以内。
@@ -591,6 +607,7 @@ first_chapter_draft_prompt = """\
 悬念密度：{suspense_level}
 伏笔操作：{foreshadowing}
 认知颠覆：{plot_twist_level}
+主角修为：表面修为{surface_cultivation} | 实际实力{actual_cultivation}
 本章简述：{chapter_summary}
 
 可用元素：
@@ -662,6 +679,7 @@ next_chapter_draft_prompt = """\
 ├── 悬念密度：{suspense_level}
 ├── 伏笔设计：{foreshadowing}
 ├── 转折程度：{plot_twist_level}
+├── 主角修为：表面修为{surface_cultivation} | 实际实力{actual_cultivation}
 ├── 章节简述：{chapter_summary}
 ├── 字数要求：{word_number}字
 ├── 核心人物：{characters_involved}
@@ -676,6 +694,8 @@ next_chapter_draft_prompt = """\
 ├── 悬念密度：{next_chapter_suspense_level}
 ├── 伏笔设计：{next_chapter_foreshadowing}
 ├── 转折程度：{next_chapter_plot_twist_level}
+├── 主角修为：表面修为{next_surface_cultivation} | 实际实力{next_actual_cultivation}
+├── 场景地点：{next_scene_location}
 └── 章节简述：{next_chapter_summary}
 
 知识库参考：（按优先级应用）

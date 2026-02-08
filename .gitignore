@@ -1,14 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build and distribution
+/build/
+/dist/
+*.egg-info/
+
+# Project specific
 /Novel_Src
-/.venv
-/build
-/dist
-/.vscode
-/__pycache__
 /markdown
 /vectorstore
 /example
+
+# Configuration files (contain API keys)
 config.json
 config_test.json
-/novel_generator/__pycache__
-/ui/__pycache__
-/data
+*.secret
+
+# User data and novels
+/data/
+novels/
+
+# Cache and temporary files
+*.log
+*.cache
+.DS_Store

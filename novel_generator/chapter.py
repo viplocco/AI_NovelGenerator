@@ -88,6 +88,8 @@ def summarize_recent_chapters(
             suspense_level=chapter_info.get("suspense_level", "中等"),
             foreshadowing=chapter_info.get("foreshadowing", "无"),
             plot_twist_level=chapter_info.get("plot_twist_level", "★☆☆☆☆"),
+            surface_cultivation=chapter_info.get("surface_cultivation", "未设定"),
+            actual_cultivation=chapter_info.get("actual_cultivation", "未设定"),
             chapter_summary=chapter_info.get("chapter_summary", ""),
             next_chapter_number=novel_number + 1,
             next_chapter_title=next_chapter_info.get("chapter_title", "（未命名）"),
@@ -96,7 +98,9 @@ def summarize_recent_chapters(
             next_chapter_summary=next_chapter_info.get("chapter_summary", "衔接过渡内容"),
             next_chapter_suspense_level=next_chapter_info.get("suspense_level", "中等"),
             next_chapter_foreshadowing=next_chapter_info.get("foreshadowing", "无特殊伏笔"),
-            next_chapter_plot_twist_level=next_chapter_info.get("plot_twist_level", "★☆☆☆☆")
+            next_chapter_plot_twist_level=next_chapter_info.get("plot_twist_level", "★☆☆☆☆"),
+            next_surface_cultivation=next_chapter_info.get("surface_cultivation", "未设定"),
+            next_actual_cultivation=next_chapter_info.get("actual_cultivation", "未设定")
         )
         
         response_text = invoke_with_cleaning(llm_adapter, prompt)
@@ -146,6 +150,7 @@ def format_chapter_info(chapter_info: dict) -> str:
 伏笔设计：{foreshadow}
 悬念密度：{suspense}
 转折程度：{twist}
+主角修为：表面修为{surface_cultivation} | 实际实力{actual_cultivation}
 章节简述：{summary}
 """
     return template.format(
@@ -159,6 +164,8 @@ def format_chapter_info(chapter_info: dict) -> str:
         foreshadow=chapter_info.get('foreshadowing', '无'),
         suspense=chapter_info.get('suspense_level', '一般'),
         twist=chapter_info.get('plot_twist_level', '★☆☆☆☆'),
+        surface_cultivation=chapter_info.get('surface_cultivation', '未设定'),
+        actual_cultivation=chapter_info.get('actual_cultivation', '未设定'),
         summary=chapter_info.get('chapter_summary', '未提供')
     )
 
@@ -364,6 +371,8 @@ def build_chapter_prompt(
     suspense_level = chapter_info["suspense_level"]
     foreshadowing = chapter_info["foreshadowing"]
     plot_twist_level = chapter_info["plot_twist_level"]
+    surface_cultivation = chapter_info.get("surface_cultivation", "未设定")
+    actual_cultivation = chapter_info.get("actual_cultivation", "未设定")
     chapter_summary = chapter_info["chapter_summary"]
 
     # 获取下一章节信息
@@ -375,6 +384,9 @@ def build_chapter_prompt(
     next_chapter_suspense = next_chapter_info.get("suspense_level", "中等")
     next_chapter_foreshadow = next_chapter_info.get("foreshadowing", "无特殊伏笔")
     next_chapter_twist = next_chapter_info.get("plot_twist_level", "★☆☆☆☆")
+    next_surface_cultivation = next_chapter_info.get("surface_cultivation", "未设定")
+    next_actual_cultivation = next_chapter_info.get("actual_cultivation", "未设定")
+    next_scene_location = next_chapter_info.get("scene_location", "未设定")
     next_chapter_summary = next_chapter_info.get("chapter_summary", "衔接过渡内容")
 
     # 创建章节目录
@@ -393,6 +405,8 @@ def build_chapter_prompt(
             foreshadowing=foreshadowing,
             plot_arcs=plot_arcs_text if plot_arcs_text else "（无剧情要点）",
             plot_twist_level=plot_twist_level,
+            surface_cultivation=surface_cultivation,
+            actual_cultivation=actual_cultivation,
             chapter_summary=chapter_summary,
             characters_involved=characters_involved,
             key_items=key_items,
@@ -507,6 +521,8 @@ def build_chapter_prompt(
             "foreshadowing": foreshadowing,  # 修复拼写错误
             "suspense_level": suspense_level,
             "plot_twist_level": plot_twist_level,
+            "surface_cultivation": surface_cultivation,
+            "actual_cultivation": actual_cultivation,
             "chapter_summary": chapter_summary,
             "time_constraint": time_constraint
         }
@@ -543,6 +559,8 @@ def build_chapter_prompt(
         suspense_level=suspense_level,
         foreshadowing=foreshadowing,
         plot_twist_level=plot_twist_level,
+        surface_cultivation=surface_cultivation,
+        actual_cultivation=actual_cultivation,
         chapter_summary=chapter_summary,
         word_number=word_number,
         characters_involved=characters_involved,
@@ -556,6 +574,9 @@ def build_chapter_prompt(
         next_chapter_suspense_level=next_chapter_suspense,
         next_chapter_foreshadowing=next_chapter_foreshadow,
         next_chapter_plot_twist_level=next_chapter_twist,
+        next_surface_cultivation=next_surface_cultivation,
+        next_actual_cultivation=next_actual_cultivation,
+        next_scene_location=next_scene_location,
         next_chapter_summary=next_chapter_summary,
         filtered_context=filtered_context
     )

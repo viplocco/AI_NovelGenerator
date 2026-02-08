@@ -49,5 +49,5 @@ def save_data_to_json(data: dict, file_path: str) -> bool:
             json.dump(data, json_file, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
-        print(f"[save_data_to_json] 保存数据到JSON文件时出错: {e}")
+        logging.error(f"[save_data_to_json] 保存数据到JSON文件时出错: {e}")
         return False

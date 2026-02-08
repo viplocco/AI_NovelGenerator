@@ -21,24 +21,30 @@ def parse_chapter_blueprint(blueprint_text: str):
     chunks = re.split(r'\n\s*\n', blueprint_text.strip())
     results = []
 
-    # 兼容是否使用方括号包裹章节标题
+    # 兼容多种章节标题格式
     # 例如：
     #   第1章 - 紫极光下的预兆
-    # 或
     #   第1章 - [紫极光下的预兆]
-    chapter_number_pattern = re.compile(r'^第\s*(\d+)\s*章\s*-\s*\[?(.*?)\]?$')
+    #   **第1章 - 紫极光下的预兆**
+    chapter_number_pattern = re.compile(r'^\*\*第\s*(\d+)\s*章\s*-\s*(.*?)\*\*$|^第\s*(\d+)\s*章\s*-\s*\[?(.*?)\]?$')
 
-    role_pattern     = re.compile(r'^本章定位：\s*\[?(.*)\]?$')
-    purpose_pattern  = re.compile(r'^核心作用：\s*\[?(.*)\]?$')
-    suspense_pattern = re.compile(r'^悬念密度：\s*\[?(.*)\]?$')
-    foreshadow_pattern = re.compile(r'^伏笔操作：\s*\[?(.*)\]?$')
-    twist_pattern       = re.compile(r'^认知颠覆：\s*\[?(.*)\]?$')
-    summary_pattern = re.compile(r'^本章简述：\s*\[?(.*)\]?$')
+    # 增强的正则表达式，支持更多格式变体，包括带 ├── 前缀的行和不带前缀的行
+    role_pattern     = re.compile(r'^├──\s*(?:章节|本章)定位[：:]\s*(.*)|^(?:章节|本章)定位[：:]\s*(.*)')
+    purpose_pattern  = re.compile(r'^├──\s*核心作用[：:]\s*(.*)|^核心作用[：:]\s*(.*)')
+    suspense_pattern = re.compile(r'^├──\s*悬念密度[：:]\s*(.*)|^悬念密度[：:]\s*(.*)')
+    foreshadow_pattern = re.compile(r'^├──\s*伏笔(?:操作|设计)[：:]\s*(.*)|^伏笔(?:操作|设计)[：:]\s*(.*)')
+    twist_pattern       = re.compile(r'^├──\s*(?:转折|认知颠覆)[：:]\s*(.*)|^(?:转折|认知颠覆)[：:]\s*(.*)')
+    # 添加对"认知颠覆"字段的直接支持
+    cognitive_pattern   = re.compile(r'^├──\s*认知颠覆[：:]\s*(.*)|^认知颠覆[：:]\s*(.*)')
+    # 添加对"转折程度"字段的直接支持，将其映射到认知颠覆
+    turn_pattern   = re.compile(r'^├──\s*转折程度[：:]\s*(.*)|^转折程度[：:]\s*(.*)')
+    summary_pattern = re.compile(r'^├──\s*(?:章节|本章)简述[：:]\s*(.*)|^(?:章节|本章)简述[：:]\s*(.*)')
 
     for chunk in chunks:
         lines = chunk.strip().splitlines()
         if not lines:
             continue
+
 
         chapter_number   = None
         chapter_title    = ""
@@ -55,43 +61,75 @@ def parse_chapter_blueprint(blueprint_text: str):
             # 不符合“第X章 - 标题”的格式，跳过
             continue
 
-        chapter_number = int(header_match.group(1))
-        chapter_title  = header_match.group(2).strip()
+        # 处理两种格式的章节标题
+        if header_match.group(1) is not None:
+            # 格式：**第X章 - 标题**
+            chapter_number = int(header_match.group(1))
+            chapter_title  = header_match.group(2).strip()
+        else:
+            # 格式：第X章 - 标题 或 第X章 - [标题]
+            chapter_number = int(header_match.group(3))
+            chapter_title  = header_match.group(4).strip()
 
         # 从后面的行匹配其他字段
         for line in lines[1:]:
-            line_stripped = line.strip()
-            if not line_stripped:
+            if not line or not line.strip():
                 continue
 
-            m_role = role_pattern.match(line_stripped)
+            m_role = role_pattern.match(line)
             if m_role:
-                chapter_role = m_role.group(1).strip()
+                # 获取第一个非空的捕获组
+                chapter_role = (m_role.group(1) or m_role.group(2)).strip() if (m_role.group(1) or m_role.group(2)) else ""
+
                 continue
 
-            m_purpose = purpose_pattern.match(line_stripped)
+            m_purpose = purpose_pattern.match(line)
             if m_purpose:
-                chapter_purpose = m_purpose.group(1).strip()
+                # 获取第一个非空的捕获组
+                chapter_purpose = (m_purpose.group(1) or m_purpose.group(2)).strip() if (m_purpose.group(1) or m_purpose.group(2)) else ""
+
                 continue
 
-            m_suspense = suspense_pattern.match(line_stripped)
+            m_suspense = suspense_pattern.match(line)
             if m_suspense:
-                suspense_level = m_suspense.group(1).strip()
+                # 获取第一个非空的捕获组
+                suspense_level = (m_suspense.group(1) or m_suspense.group(2)).strip() if (m_suspense.group(1) or m_suspense.group(2)) else ""
+
                 continue
 
-            m_foreshadow = foreshadow_pattern.match(line_stripped)
+            m_foreshadow = foreshadow_pattern.match(line)
             if m_foreshadow:
-                foreshadowing = m_foreshadow.group(1).strip()
+                # 获取第一个非空的捕获组
+                foreshadowing = (m_foreshadow.group(1) or m_foreshadow.group(2)).strip() if (m_foreshadow.group(1) or m_foreshadow.group(2)) else ""
+
                 continue
 
-            m_twist = twist_pattern.match(line_stripped)
+            m_twist = twist_pattern.match(line)
             if m_twist:
-                plot_twist_level = m_twist.group(1).strip()
+                # 获取第一个非空的捕获组
+                plot_twist_level = (m_twist.group(1) or m_twist.group(2)).strip() if (m_twist.group(1) or m_twist.group(2)) else ""
+
+                continue
+                
+            m_cognitive = cognitive_pattern.match(line)
+            if m_cognitive:
+                # 获取第一个非空的捕获组
+                plot_twist_level = (m_cognitive.group(1) or m_cognitive.group(2)).strip() if (m_cognitive.group(1) or m_cognitive.group(2)) else ""
+
                 continue
 
-            m_summary = summary_pattern.match(line_stripped)
+            m_turn = turn_pattern.match(line)
+            if m_turn:
+                # 将"转折程度"映射到"认知颠覆"，获取第一个非空的捕获组
+                plot_twist_level = (m_turn.group(1) or m_turn.group(2)).strip() if (m_turn.group(1) or m_turn.group(2)) else ""
+
+                continue
+
+            m_summary = summary_pattern.match(line)
             if m_summary:
-                chapter_summary = m_summary.group(1).strip()
+                # 获取第一个非空的捕获组
+                chapter_summary = (m_summary.group(1) or m_summary.group(2)).strip() if (m_summary.group(1) or m_summary.group(2)) else ""
+
                 continue
 
         results.append({
@@ -116,17 +154,20 @@ def get_chapter_info_from_blueprint(blueprint_text: str, target_chapter_number: 
     若找不到则返回一个默认的结构。
     """
     all_chapters = parse_chapter_blueprint(blueprint_text)
+
     for ch in all_chapters:
+
         if ch["chapter_number"] == target_chapter_number:
             return ch
-    # 默认返回
+
+    # 默认返回，提供更有意义的默认值
     return {
         "chapter_number": target_chapter_number,
         "chapter_title": f"第{target_chapter_number}章",
-        "chapter_role": "",
-        "chapter_purpose": "",
-        "suspense_level": "",
-        "foreshadowing": "",
-        "plot_twist_level": "",
-        "chapter_summary": ""
+        "chapter_role": "常规章节",
+        "chapter_purpose": "内容推进",
+        "suspense_level": "中等",
+        "foreshadowing": "无特殊伏笔",
+        "plot_twist_level": "★☆☆☆☆",
+        "chapter_summary": f"第{target_chapter_number}章的剧情发展"
     }

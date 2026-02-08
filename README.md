@@ -20,15 +20,24 @@
 
 > 一款基于大语言模型的多功能小说生成器，助您高效创作逻辑严谨、设定统一的长篇故事
 
-2025-03-05 添加角色库功能
+### 更新日志
 
-2025-03-09 添加字数显示
+#### 2025-03-05
+- 添加角色库功能
 
-2025-03-13 
-1、新增闲云修改；
-2、把本章指导改成内容指导；
-3、在生成架构中的： 2. 角色动力学设定（角色弧光模型）、 3. 世界构建矩阵（三维度交织法）、 4. 情节架构（三幕式悬念）与生成目录的：5. 章节目录生成（悬念节奏曲线）加入引导词内容指导，以方便生成角色动力学时只以核心种子生成，导致生成的内容与实际需求不符。
-4、在终端加回被删除的LLM提示词与LLM返回内容显示，以便复盘，参考修改提示词。
+#### 2025-03-09
+- 添加字数显示
+
+#### 2025-03-13
+1. 新增闲云修改功能
+2. 将"本章指导"改为"内容指导"
+3. 在生成架构中的以下部分加入引导词内容指导：
+   - 2. 角色动力学设定（角色弧光模型）
+   - 3. 世界构建矩阵（三维度交织法）
+   - 4. 情节架构（三幕式悬念）
+   - 5. 章节目录生成（悬念节奏曲线）
+   以便生成角色动力学时能更准确地根据实际需求生成内容
+4. 在终端恢复显示LLM提示词与返回内容，方便复盘和参考修改提示词
 ---
 
 ## 📑 目录导航
@@ -87,17 +96,44 @@
 ```
 novel-generator/
 ├── main.py                      # 入口文件, 运行 GUI
-├── ui.py                        # 图形界面
-├── novel_generator.py           # 章节生成核心逻辑
+├── config.json                  # 用户配置文件
+├── requirements.txt             # 项目依赖
+├── icon.ico                     # 应用图标
+├── chapter_directory_parser.py  # 目录解析
+├── config_manager.py            # 配置管理 (API Key, Base URL)
 ├── consistency_checker.py       # 一致性检查, 防止剧情冲突
-|—— chapter_directory_parser.py  # 目录解析
-|—— embedding_adapters.py        # Embedding 接口封装
-|—— llm_adapters.py              # LLM 接口封装
+├── embedding_adapters.py        # Embedding 接口封装
+├── llm_adapters.py              # LLM 接口封装
 ├── prompt_definitions.py        # 定义 AI 提示词
+├── tooltips.py                  # 界面提示文本
 ├── utils.py                     # 常用工具函数, 文件操作
-├── config_manager.py            # 管理配置 (API Key, Base URL)
-├── config.json                  # 用户配置文件 (可选)
-└── vectorstore/                 # (可选) 本地向量数据库存储
+├── novel_generator/             # 小说生成核心模块
+│   ├── __init__.py
+│   ├── architecture.py          # 世界观架构生成
+│   ├── blueprint.py             # 剧情蓝图生成
+│   ├── chapter.py               # 章节生成核心逻辑
+│   ├── common.py                # 通用工具函数
+│   ├── finalization.py          # 章节定稿处理
+│   ├── knowledge.py             # 知识库集成
+│   └── vectorstore_utils.py     # 向量数据库工具
+├── ui/                          # 图形界面模块
+│   ├── __init__.py
+│   ├── chapters_tab.py          # 章节管理界面
+│   ├── character_tab.py         # 角色管理界面
+│   ├── config_tab.py            # 配置设置界面
+│   ├── context_menu.py          # 右键菜单
+│   ├── directory_tab.py        # 目录管理界面
+│   ├── generation_handlers.py   # 生成处理逻辑
+│   ├── helpers.py               # 界面辅助函数
+│   ├── main_tab.py              # 主标签页
+│   ├── main_window.py           # 主窗口
+│   ├── novel_manager.py         # 小说管理器
+│   ├── novel_params_tab.py      # 小说参数设置
+│   ├── role_library.py          # 角色库管理
+│   ├── setting_tab.py           # 设定管理界面
+│   └── summary_tab.py           # 摘要管理界面
+└── data/                        # 数据存储目录
+    └── novels/                  # 生成小说存储
 ```
 
 ---

@@ -7,7 +7,7 @@ from ui.context_menu import TextWidgetContextMenu
 from utils import read_file, save_string_to_txt, clear_file_content
 
 def build_chapters_tab(self):
-    self.chapters_view_tab = self.tabview.add("Chapters Manage")
+    self.chapters_view_tab = self.tabview.add("章节管理")
     self.chapters_view_tab.rowconfigure(0, weight=0)
     self.chapters_view_tab.rowconfigure(1, weight=1)
     self.chapters_view_tab.columnconfigure(0, weight=1)
@@ -33,7 +33,7 @@ def build_chapters_tab(self):
     save_btn = ctk.CTkButton(top_frame, text="保存修改", command=self.save_current_chapter, font=("Microsoft YaHei", 12))
     save_btn.grid(row=0, column=3, padx=5, pady=5, sticky="w")
 
-    refresh_btn = ctk.CTkButton(top_frame, text="刷新章节列表", command=self.refresh_chapters_list, font=("Microsoft YaHei", 12))
+    refresh_btn = ctk.CTkButton(top_frame, text="刷新列表", command=self.refresh_chapters_list, font=("Microsoft YaHei", 12))
     refresh_btn.grid(row=0, column=5, padx=5, pady=5, sticky="e")
 
     self.chapters_word_count_label = ctk.CTkLabel(top_frame, text="字数：0", font=("Microsoft YaHei", 12))

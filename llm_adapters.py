@@ -3,8 +3,12 @@
 import logging
 from typing import Optional
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    import google.generativeai as genai
+    types = None
 from azure.ai.inference import ChatCompletionsClient
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.inference.models import SystemMessage, UserMessage
@@ -103,26 +107,52 @@ class GeminiAdapter(BaseLLMAdapter):
         self.model_name = model_name
         self.max_tokens = max_tokens
         self.temperature = temperature
-        # gemini超时时间是毫秒
-        self.timeout = timeout * 1000
-
-        self._client = genai.Client(api_key=self.api_key,http_options=types.HttpOptions(base_url=base_url,timeout=self.timeout))
+        self.timeout = timeout
+        self.base_url = base_url
+        
+        # 检查使用的是哪种SDK
+        self.use_new_sdk = types is not None
+        
+        if self.use_new_sdk:
+            # 使用新的 google.genai SDK
+            self._client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(base_url=base_url, timeout=self.timeout * 1000))
+        else:
+            # 使用旧的 google.generativeai SDK
+            genai.configure(api_key=self.api_key)
+            self._client = genai.GenerativeModel(model_name=self.model_name)
 
     def invoke(self, prompt: str) -> str:
         try:
-            response = self._client.models.generate_content(
-                model = self.model_name,
-                contents = prompt,
-                config = types.GenerateContentConfig(
-                    max_output_tokens=self.max_tokens,
-                    temperature=self.temperature,
-                ),
-            )
-            if response and response.text:
-                return response.text
+            if self.use_new_sdk:
+                # 使用新的 google.genai SDK
+                response = self._client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                    ),
+                )
+                if response and response.text:
+                    return response.text
+                else:
+                    logging.warning("No text response from Gemini API.")
+                    return ""
             else:
-                logging.warning("No text response from Gemini API.")
-                return ""
+                # 使用旧的 google.generativeai SDK
+                generation_config = {
+                    "temperature": self.temperature,
+                    "max_output_tokens": self.max_tokens,
+                }
+                response = self._client.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                if response and response.text:
+                    return response.text
+                else:
+                    logging.warning("No text response from Gemini API.")
+                    return ""
         except Exception as e:
             logging.error(f"Gemini API 调用失败: {e}")
             return ""

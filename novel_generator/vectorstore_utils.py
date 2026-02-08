@@ -19,7 +19,10 @@ warnings.filterwarnings('ignore', message='.*Torch was not compiled with flash a
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 禁用tokenizer并行警告
 
 from chromadb.config import Settings
-from langchain.docstore.document import Document
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    from langchain.docstore.document import Document
 from sklearn.metrics.pairwise import cosine_similarity
 from .common import call_with_retry
 
@@ -48,7 +51,10 @@ def init_vector_store(embedding_adapter, texts, filepath: str):
     在 filepath 下创建/加载一个 Chroma 向量库并插入 texts。
     如果Embedding失败，则返回 None，不中断任务。
     """
-    from langchain.embeddings.base import Embeddings as LCEmbeddings
+    try:
+        from langchain_core.embeddings import Embeddings as LCEmbeddings
+    except ImportError:
+        from langchain.embeddings.base import Embeddings as LCEmbeddings
 
     store_dir = get_vectorstore_dir(filepath)
     os.makedirs(store_dir, exist_ok=True)
@@ -91,7 +97,10 @@ def load_vector_store(embedding_adapter, filepath: str):
     读取已存在的 Chroma 向量库。若不存在则返回 None。
     如果加载失败（embedding 或IO问题），则返回 None。
     """
-    from langchain.embeddings.base import Embeddings as LCEmbeddings
+    try:
+        from langchain_core.embeddings import Embeddings as LCEmbeddings
+    except ImportError:
+        from langchain.embeddings.base import Embeddings as LCEmbeddings
     store_dir = get_vectorstore_dir(filepath)
     if not os.path.exists(store_dir):
         logging.info("Vector store not found. Will return None.")

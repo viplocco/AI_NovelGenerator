@@ -167,6 +167,10 @@ class RoleLibrary:
         ctk.CTkButton(button_frame, text="保存",
                       command=self.save_current_role, font=DEFAULT_FONT).pack(side="left", padx=5)
 
+        # 自动选择"全部"分类并显示角色
+        if "全部" in self._get_all_categories():
+            self.show_category("全部")
+
     def _get_all_categories(self):
         """获取所有有效分类（包括动态更新）"""
         categories = ["全部"]
@@ -329,7 +333,7 @@ class RoleLibrary:
         # 加载character_state.txt按钮
         ctk.CTkButton(
             btn_frame,
-            text="加载character_state.txt",
+            text="加载角色状态文件",
             width=160,
             command=lambda: self.load_default_character_state(right_panel),
             font=DEFAULT_FONT
@@ -470,62 +474,80 @@ class RoleLibrary:
         return attributes
 
     def _parse_llm_response(self, response):
-        """解析LLM返回的角色数据"""
+        """解析LLM返回的角色数据，同时保存每个角色的原始文本块"""
         roles = []
         current_role = None
         current_attr = None
-        current_subattr = None
+        current_role_lines = []  # 保存当前角色的原始文本行
         
-        attribute_pattern = re.compile(r'^([├└]──)([\w\u4e00-\u9fa5]+)\s*[:：]')
+        attribute_pattern = re.compile(r'^([├└]──)([\w\u4e00-\u9fa5]+)\s*[:：]?\s*$')
         item_pattern = re.compile(r'^│\s+([├└]──)\s*(.*)')
         
         for line in response.split('\n'):
             line = line.rstrip()
+            # 收集当前角色的原始文本行
+            if current_role:
+                current_role_lines.append(line)
             
             # 检测角色名称行（兼容中英文冒号和前后空格）
             role_match = re.match(r'^\s*([\u4e00-\u9fa5a-zA-Z0-9]+)\s*[:：]\s*$', line)
             if role_match:
+                # 如果已有角色，保存其原始文本
+                if current_role and current_role_lines:
+                    roles[-1]['original_text'] = '\n'.join(current_role_lines)
+
                 current_role = role_match.group(1).strip()
+                current_role_lines = [line]  # 开始收集新角色的原始文本
                 roles.append({'name': current_role, 'attributes': {}})
+                current_attr = None
                 continue
                 
             if not current_role:
                 continue
                 
-            # 解析属性（支持子属性）
+            # 解析属性（支持带冒号和不带冒号两种格式）
             attr_match = attribute_pattern.match(line)
             if attr_match:
                 prefix, attr_name = attr_match.groups()
                 current_attr = attr_name.strip()
-                roles[-1]['attributes'][current_attr] = []
-                current_subattr = None
+
+                # 确保属性名称不包含冒号
+                if current_attr.endswith(':') or current_attr.endswith('：'):
+                    current_attr = current_attr[:-1].strip()
+
+                # 只使用预设属性名称作为键
+                preset_attrs = ["物品", "能力", "状态", "主要角色间关系网", "触发或加深的事件"]
+                matched_preset = None
+                for preset in preset_attrs:
+                    if current_attr == preset:
+                        matched_preset = preset
+                        break
+
+                # 如果匹配到预设属性，使用预设名称作为键
+                if matched_preset:
+                    roles[-1]['attributes'][matched_preset] = []
+                else:
+                    # 如果未匹配到预设属性，使用原始名称
+                    roles[-1]['attributes'][current_attr] = []
+
                 continue
                 
-            # 解析属性条目（支持多级结构）
+            # 解析属性条目
             item_match = item_pattern.match(line)
             if item_match and current_attr:
                 prefix, content = item_match.groups()
                 content = content.strip()
                 
-                # 解析子属性（例如"身体状态: xxx"）
-                if ':' in content or '：' in content:
-                    subattr_match = re.split(r'[:：]', content, 1)
-                    if len(subattr_match) > 1:
-                        current_subattr = subattr_match[0].strip()
-                        value = subattr_match[1].strip()
-                        if value:  # 值不为空时才添加
-                            roles[-1]['attributes'][current_attr].append(
-                                f"{current_subattr}: {value}"
-                            )
-                        continue
+                # 直接添加条目内容，保持原始格式不变
                 
-                # 普通条目处理
+                # 直接添加条目内容，保持原始格式不变
                 if content:
-                    if current_subattr:
-                        # 子属性的延续条目
-                        roles[-1]['attributes'][current_attr][-1] += f"，{content}"
-                    else:
-                        roles[-1]['attributes'][current_attr].append(content)
+                    roles[-1]['attributes'][current_attr].append(content)
+
+        # 保存最后一个角色的原始文本
+        if current_role and current_role_lines:
+            roles[-1]['original_text'] = '\n'.join(current_role_lines)
+
         return roles
 
     def _display_analyzed_roles(self, parent, roles):
@@ -700,17 +722,34 @@ class RoleLibrary:
             for role in selected_roles:
                 dest_path = os.path.join(target_dir, f"{role['name']}.txt")
                 
-                # 构建角色内容
-                content_lines = [f"{role['name']}："]
-                for attr, items in role['attributes'].items():
-                    content_lines.append(f"├──{attr}：")
-                    for i, item in enumerate(items):
-                        prefix = "├──" if i < len(items)-1 else "└──"
-                        content_lines.append(f"│  {prefix}{item}")
+                # 使用原始文本保存，保持大模型返回的格式不变
+                original_text = role.get('original_text', '')
+                if original_text:
+                    # 直接使用原始文本
+                    import json
+                    # 保存原始文本和解析后的属性数据到文件
+                    role_data = {
+                        'original_text': original_text,
+                        'attributes': role['attributes']
+                    }
+                    with open(dest_path, 'w', encoding='utf-8') as f:
+                        # 先写入原始文本
+                        f.write(original_text)
+                        # 在文件末尾添加元数据（使用特殊标记）
+                        f.write('\n\n###ROLE_METADATA###\n')
+                        f.write(json.dumps(role_data, ensure_ascii=False, indent=2))
+                else:
+                    # 如果没有原始文本，使用构建的内容（降级处理）
+                    content_lines = [f"{role['name']}："]
+                    for attr, items in role['attributes'].items():
+                        content_lines.append(f"├──{attr}：")
+                        for i, item in enumerate(items):
+                            prefix = "├──" if i < len(items)-1 else "└──"
+                            content_lines.append(f"│  {prefix}{item}")
                 
-                # 直接写入文件，覆盖已存在的文件
-                with open(dest_path, 'w', encoding='utf-8') as f:
-                    f.write('\n'.join(content_lines))
+                    # 直接写入文件，覆盖已存在的文件
+                    with open(dest_path, 'w', encoding='utf-8') as f:
+                        f.write('\n'.join(content_lines))
 
             # 刷新分类显示
             self.load_categories()
@@ -758,20 +797,42 @@ class RoleLibrary:
         content = [f"{self.role_name_var.get()}："]
         attributes_order = ["物品", "能力", "状态", "主要角色间关系网", "触发或加深的事件"]
 
-        for attr_name in attributes_order:
-            content.append(f"├──{attr_name}：")
-            # 找到对应的 attribute_block
-            for block in self.attributes_frame.winfo_children():
-                if isinstance(block, ctk.CTkFrame) and block.attribute_name == attr_name:
-                    # 遍历该 block 中的所有 CTkEntry
-                    for child in block.winfo_children():
-                        if isinstance(child, ctk.CTkFrame):  # 条目行
-                            for item in child.winfo_children():
-                                if isinstance(item, ctk.CTkEntry):
-                                    entry_text = item.get().strip()
-                                    if entry_text:  # 只添加非空条目
-                                        content.append(f"│  ├──{entry_text}")
-                    break  # 找到对应属性后跳出循环
+        # 优先使用保存的解析属性，如果没有则从UI控件获取
+        if hasattr(self, 'parsed_attributes'):
+            for attr_name in attributes_order:
+                content.append(f"├──{attr_name}：")
+                items = self.parsed_attributes.get(attr_name, [])
+                # 添加条目到内容，最后一个条目使用└──，其他使用├──
+                for i, item in enumerate(items):
+                    if i == len(items) - 1:  # 最后一个条目
+                        content.append(f"│  └──{item}")
+                    else:  # 其他条目
+                        content.append(f"│  ├──{item}")
+        else:
+            # 如果没有保存的属性，从UI控件获取
+            for attr_name in attributes_order:
+                content.append(f"├──{attr_name}：")
+                # 找到对应的 attribute_block
+                for block in self.attributes_frame.winfo_children():
+                    if isinstance(block, ctk.CTkFrame) and block.attribute_name == attr_name:
+                        # 遍历该 block 中的所有 CTkEntry
+                        items = []
+                        for child in block.winfo_children():
+                            if isinstance(child, ctk.CTkFrame):  # 条目行
+                                for item in child.winfo_children():
+                                    if isinstance(item, ctk.CTkEntry):
+                                        entry_text = item.get().strip()
+                                        if entry_text:  # 只添加非空条目
+                                            items.append(entry_text)
+
+                        # 添加条目到内容，最后一个条目使用└──，其他使用├──
+                        for i, item in enumerate(items):
+                            if i == len(items) - 1:  # 最后一个条目
+                                content.append(f"│  └──{item}")
+                            else:  # 其他条目
+                                content.append(f"│  ├──{item}")
+
+                        break  # 找到对应属性后跳出循环
         return content
 
     def _save_role_file(self, content, save_path):
@@ -1178,6 +1239,9 @@ class RoleLibrary:
         self.category_combobox.set(category)
         for widget in self.role_list_frame.winfo_children():
             widget.destroy()
+        
+        # 用于存储所有角色名称
+        all_roles = []
 
         # 如果是"全部"分类，显示所有角色
         if category == "全部":
@@ -1197,6 +1261,7 @@ class RoleLibrary:
                             # 去重
                             if role_name not in unique_roles:
                                 unique_roles.add(role_name)
+                                all_roles.append(role_name)
                                 btn = ctk.CTkButton(
                                     self.role_list_frame,
                                     text=role_name,
@@ -1213,6 +1278,7 @@ class RoleLibrary:
                 for role_file in os.listdir(role_dir):
                     if role_file.endswith(".txt"):
                         role_name = os.path.splitext(role_file)[0]
+                        all_roles.append(role_name)
                         btn = ctk.CTkButton(
                             self.role_list_frame,
                             text=role_name,
@@ -1222,6 +1288,10 @@ class RoleLibrary:
                         btn.pack(fill="x", pady=2)
             except FileNotFoundError:
                 messagebox.showerror("错误", "分类目录不存在", parent=self.window)
+        
+        # 自动加载第一个角色
+        if all_roles:
+            self.show_role(all_roles[0])
 
     def show_role(self, role_name):
         """显示角色详细信息（支持UTF-8/ANSI编码）"""
@@ -1269,45 +1339,156 @@ class RoleLibrary:
 
             content, _ = self._read_file_with_fallback_encoding(file_path)
 
-            # 解析属性结构
-            attributes = {
-                "物品": [],
-                "能力": [],
-                "状态": [],
-                "主要角色间关系网": [],
-                "触发或加深的事件": []
-            }
-            current_attribute = None
-            for line in content[1:]:
-                # 改进属性名称识别
-                if line.startswith(("├──", "├──")):
-                    # 提取属性名称（兼容冒号和空格）
-                    attr_part = line.split("──")[1].strip()
-                    attr_name = re.split(r'[:：]', attr_part, 1)[0].strip()
+            # 检查文件中是否包含元数据
+            metadata_start = None
+            for i, line in enumerate(content):
+                if line.strip() == '###ROLE_METADATA###':
+                    metadata_start = i
+                    break
 
-                    # 匹配预设属性
-                    for preset_attr in attributes:
-                        if attr_name == preset_attr:
-                            current_attribute = preset_attr
-                            indent_level = line.find(
-                                "├") if "├" in line else line.find("├")
-                            break
-                    else:
-                        current_attribute = None
+            # 如果找到元数据，使用保存的属性数据
+            if metadata_start is not None:
+                try:
+                    import json
+                    metadata_text = '\n'.join(content[metadata_start + 1:])
+                    metadata = json.loads(metadata_text)
+                    # 使用保存的属性数据
+                    self.parsed_attributes = metadata.get('attributes', {
+                        "物品": [],
+                        "能力": [],
+                        "状态": [],
+                        "主要角色间关系网": [],
+                        "触发或加深的事件": []
+                    })
+                    # 只显示原始文本部分
+                    display_content = content[:metadata_start]
+                except Exception as e:
+                    # 元数据解析失败，使用原始解析逻辑
+                    print(f"解析元数据失败: {e}")
+                    display_content = content
+                    self.parsed_attributes = {
+                        "物品": [],
+                        "能力": [],
+                        "状态": [],
+                        "主要角色间关系网": [],
+                        "触发或加深的事件": []
+                    }
+                    current_attribute = None
+                    unmatched_items = []
+                    for line in content[1:]:
+                        # 改进属性名称识别 - 支持多种树形结构符号
+                        if line.startswith(("├──", "└──")):
+                            # 提取属性名称（兼容冒号和空格）
+                            if "──" in line:
+                                attr_part = line.split("──")[1].strip()
+                            else:
+                                attr_part = line[2:].strip()  # 去掉前两个字符
 
-                # 改进条目内容提取
-                elif current_attribute and line.startswith(("│  ", "   ")):
-                    # 提取整个条目内容
-                    item_content = line.strip()
-                    # 去掉前面的符号和空格
-                    item_content = re.sub(r'^[│├└─\s]*', '', item_content)
-                    attributes[current_attribute].append(item_content)
+                            attr_name = re.split(r'[:：:]', attr_part, 1)[0].strip()
 
-            # 显示原始文件内容
-            self.preview_text.insert(tk.END, '\n'.join(content))
+                            # 匹配预设属性
+                            matched = False
+                            for preset_attr in self.parsed_attributes:
+                                if attr_name == preset_attr:
+                                    current_attribute = preset_attr
+                                    matched = True
+                                    break
+
+                            if not matched:
+                                # 如果未匹配到预设属性，将之前的未匹配条目添加到"物品"分类
+                                if unmatched_items:
+                                    self.parsed_attributes["物品"].extend(unmatched_items)
+                                    unmatched_items = []
+                                current_attribute = None
+
+                        # 改进条目内容提取 - 支持多种树形结构符号
+                        elif line.startswith("│  ├──") or line.startswith("│  └──") or line.startswith("│ ├──") or line.startswith("│ └──"):
+                            # 提取整个条目内容
+                            item_content = line.strip()
+                            # 去掉前面的符号和空格
+                            item_content = re.sub(r'^[│├└─\s]*', '', item_content)
+                            if item_content:  # 只添加非空内容
+                                if current_attribute:
+                                    # 检查是否是子属性行（包含冒号）
+                                    if '：' in item_content or ':' in item_content:
+                                        # 将子属性行作为普通条目添加
+                                        self.parsed_attributes[current_attribute].append(item_content)
+                                    else:
+                                        # 普通条目
+                                        self.parsed_attributes[current_attribute].append(item_content)
+                                else:
+                                    # 如果没有匹配到属性，保存到未匹配列表
+                                    unmatched_items.append(item_content)
+
+                    # 将剩余的未匹配条目添加到"物品"分类
+                    if unmatched_items:
+                        self.parsed_attributes["物品"].extend(unmatched_items)
+            else:
+                # 没有元数据，使用原始解析逻辑
+                display_content = content
+                self.parsed_attributes = {
+                    "物品": [],
+                    "能力": [],
+                    "状态": [],
+                    "主要角色间关系网": [],
+                    "触发或加深的事件": []
+                }
+                current_attribute = None
+                unmatched_items = []
+                for line in content[1:]:
+                    # 改进属性名称识别 - 支持多种树形结构符号
+                    if line.startswith(("├──", "└──")):
+                        # 提取属性名称（兼容冒号和空格）
+                        if "──" in line:
+                            attr_part = line.split("──")[1].strip()
+                        else:
+                            attr_part = line[2:].strip()  # 去掉前两个字符
+
+                        attr_name = re.split(r'[:：:]', attr_part, 1)[0].strip()
+
+                        # 匹配预设属性
+                        matched = False
+                        for preset_attr in self.parsed_attributes:
+                            if attr_name == preset_attr:
+                                current_attribute = preset_attr
+                                matched = True
+                                break
+
+                        if not matched:
+                            # 如果未匹配到预设属性，将之前的未匹配条目添加到"物品"分类
+                            if unmatched_items:
+                                self.parsed_attributes["物品"].extend(unmatched_items)
+                                unmatched_items = []
+                            current_attribute = None
+
+                    # 改进条目内容提取 - 支持多种树形结构符号
+                    elif line.startswith("│  ├──") or line.startswith("│  └──") or line.startswith("│ ├──") or line.startswith("│ └──"):
+                        # 提取整个条目内容
+                        item_content = line.strip()
+                        # 去掉前面的符号和空格
+                        item_content = re.sub(r'^[│├└─\s]*', '', item_content)
+                        if item_content:  # 只添加非空内容
+                            if current_attribute:
+                                # 检查是否是子属性行（包含冒号）
+                                if '：' in item_content or ':' in item_content:
+                                    # 将子属性行作为普通条目添加
+                                    self.parsed_attributes[current_attribute].append(item_content)
+                                else:
+                                    # 普通条目
+                                    self.parsed_attributes[current_attribute].append(item_content)
+                            else:
+                                # 如果没有匹配到属性，保存到未匹配列表
+                                unmatched_items.append(item_content)
+
+                # 将剩余的未匹配条目添加到"物品"分类
+                if unmatched_items:
+                    self.parsed_attributes["物品"].extend(unmatched_items)
+
+            # 显示原始文件内容（不包含元数据）
+            self.preview_text.insert(tk.END, '\n'.join(display_content))
 
             # 重构属性编辑区
-            for attr_name, items in attributes.items():
+            for attr_name, items in self.parsed_attributes.items():
                 self._create_attribute_section(attr_name, items)
 
         except FileNotFoundError as e:
@@ -1339,6 +1520,17 @@ class RoleLibrary:
         first_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5), ipadx=5, ipady=3)
         if items:
             first_entry.insert(0, items[0])  # 填充第一个条目的内容
+
+        # 为输入框添加绑定，以便在内容变化时更新parsed_attributes
+        def update_first_item(event=None):
+            if hasattr(self, 'parsed_attributes') and attr_name in self.parsed_attributes:
+                if self.parsed_attributes[attr_name]:
+                    self.parsed_attributes[attr_name][0] = first_entry.get().strip()
+                else:
+                    self.parsed_attributes[attr_name].append(first_entry.get().strip())
+
+        first_entry.bind('<KeyRelease>', update_first_item)
+        first_entry.bind('<FocusOut>', update_first_item)
 
         # “增加”按钮容器
         add_button_frame = ctk.CTkFrame(first_item_frame, fg_color="transparent")
@@ -1387,6 +1579,33 @@ class RoleLibrary:
         new_entry.grid(row=0, column=0, sticky="ew", padx=(0, 5), ipadx=5, ipady=3)
         new_entry.insert(0, initial_text)  # 设置初始文本
 
+        # 为输入框添加绑定，以便在内容变化时更新parsed_attributes
+        def update_item(event=None):
+            if hasattr(self, 'parsed_attributes') and attr_name in self.parsed_attributes:
+                # 找到这个输入框在parsed_attributes中的索引
+                item_index = -1
+                current_index = 0
+                for child in attribute_block.winfo_children():
+                    if isinstance(child, ctk.CTkFrame):
+                        for item in child.winfo_children():
+                            if isinstance(item, ctk.CTkEntry):
+                                if item == new_entry:
+                                    item_index = current_index
+                                    break
+                                current_index += 1
+                        if item_index >= 0:
+                            break
+
+                # 更新对应位置的值
+                if item_index >= 0 and item_index < len(self.parsed_attributes[attr_name]):
+                    self.parsed_attributes[attr_name][item_index] = new_entry.get().strip()
+                elif item_index >= 0:
+                    # 如果索引超出范围，添加新条目
+                    self.parsed_attributes[attr_name].append(new_entry.get().strip())
+
+        new_entry.bind('<KeyRelease>', update_item)
+        new_entry.bind('<FocusOut>', update_item)
+
         # 删除按钮容器
         del_button_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
         del_button_frame.grid(row=0, column=1, sticky="e", padx=(5, 0))
@@ -1399,6 +1618,10 @@ class RoleLibrary:
             font=DEFAULT_FONT
         )
         del_button.grid(row=0, column=0)
+
+        # 更新parsed_attributes
+        if hasattr(self, 'parsed_attributes') and attr_name in self.parsed_attributes:
+            self.parsed_attributes[attr_name].append(initial_text)
 
 
     def _remove_item(self, item_frame, attr_name):
@@ -1427,6 +1650,19 @@ class RoleLibrary:
 
         # 移除条目
         item_frame.destroy()
+
+        # 更新parsed_attributes
+        if hasattr(self, 'parsed_attributes') and attr_name in self.parsed_attributes:
+            # 重新从UI控件获取所有条目
+            items = []
+            for child in attribute_block.winfo_children():
+                if isinstance(child, ctk.CTkFrame):  # 条目行
+                    for item in child.winfo_children():
+                        if isinstance(item, ctk.CTkEntry):
+                            entry_text = item.get().strip()
+                            if entry_text:  # 只添加非空条目
+                                items.append(entry_text)
+            self.parsed_attributes[attr_name] = items
 
         # 重新调整剩余条目的行号
         current_row = 0

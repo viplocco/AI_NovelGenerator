@@ -3,12 +3,14 @@
 import customtkinter as ctk
 from tkinter import messagebox
 from ui.context_menu import TextWidgetContextMenu
+from ui.novel_params_tab import build_novel_params_area, build_optional_buttons_area
+from ui.config_tab import build_model_config_area
 
 def build_main_tab(self):
     """
     主Tab包含左侧的"本章内容"编辑框和输出日志，以及右侧的主要操作和参数设置区
     """
-    self.main_tab = self.tabview.add("Main Functions")
+    self.main_tab = self.tabview.add("主功能")
     self.main_tab.rowconfigure(0, weight=1)
     self.main_tab.columnconfigure(0, weight=1)
     self.main_tab.columnconfigure(1, weight=0)
@@ -58,7 +60,7 @@ def build_left_layout(self):
 
     self.btn_generate_architecture = ctk.CTkButton(
         self.step_buttons_frame,
-        text="Step1. 生成架构",
+        text="步骤1. 生成架构",
         command=self.generate_novel_architecture_ui,
         font=("Microsoft YaHei", 12)
     )
@@ -66,7 +68,7 @@ def build_left_layout(self):
 
     self.btn_generate_directory = ctk.CTkButton(
         self.step_buttons_frame,
-        text="Step2. 生成目录",
+        text="步骤2. 生成目录",
         command=self.generate_chapter_blueprint_ui,
         font=("Microsoft YaHei", 12)
     )
@@ -74,7 +76,7 @@ def build_left_layout(self):
 
     self.btn_generate_chapter = ctk.CTkButton(
         self.step_buttons_frame,
-        text="Step3. 生成草稿",
+        text="步骤3. 生成草稿",
         command=self.generate_chapter_draft_ui,
         font=("Microsoft YaHei", 12)
     )
@@ -82,7 +84,7 @@ def build_left_layout(self):
 
     self.btn_finalize_chapter = ctk.CTkButton(
         self.step_buttons_frame,
-        text="Step4. 定稿章节",
+        text="步骤4. 定稿章节",
         command=self.finalize_chapter_ui,
         font=("Microsoft YaHei", 12)
     )
@@ -99,15 +101,31 @@ def build_left_layout(self):
 
 def build_right_layout(self):
     """
-    右侧区域：配置区(tabview) + 小说主参数 + 可选功能按钮
+    右侧区域：小说参数Tabview + 可选功能按钮
+    小说参数Tabview包含：小说参数Tab 和 模型配置Tab
     """
-    self.right_frame.grid_rowconfigure(0, weight=0)
-    self.right_frame.grid_rowconfigure(1, weight=1)
-    self.right_frame.grid_rowconfigure(2, weight=0)
+    self.right_frame.grid_rowconfigure(0, weight=1)
+    self.right_frame.grid_rowconfigure(1, weight=0)
     self.right_frame.columnconfigure(0, weight=1)
 
-    # 配置区（AI/Embedding）
-    self.config_frame = ctk.CTkFrame(self.right_frame, corner_radius=10, border_width=2, border_color="gray")
-    self.config_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-    self.config_frame.columnconfigure(0, weight=1)
-    # 其余部分将在 config_tab.py 与 novel_params_tab.py 中构建
+    # 创建参数Tabview
+    self.params_tabview = ctk.CTkTabview(self.right_frame)
+    self.params_tabview.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+    # 小说参数Tab
+    self.novel_params_tab = self.params_tabview.add("小说参数")
+    self.novel_params_tab.grid_rowconfigure(0, weight=1)
+    self.novel_params_tab.grid_columnconfigure(0, weight=1)
+
+    # 模型配置Tab
+    self.model_config_tab = self.params_tabview.add("模型配置")
+    self.model_config_tab.grid_columnconfigure(0, weight=1)
+
+    # 构建小说参数区域
+    build_novel_params_area(self)
+
+    # 构建模型配置区域
+    build_model_config_area(self)
+
+    # 构建可选按钮区域
+    build_optional_buttons_area(self)

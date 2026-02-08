@@ -32,29 +32,30 @@ def create_label_with_help(self, parent, label_text, tooltip_key, row, column,
 
     return frame
 
-def build_config_tabview(self):
+def build_model_config_area(self):
     """
-    创建包含 LLM Model settings 和 Embedding settings 的选项卡。
+    在模型配置Tab中创建LLM和Embedding配置区域
     """
-    self.config_tabview = ctk.CTkTabview(self.config_frame)
-    self.config_tabview.grid(row=0, column=0, sticky="we", padx=5, pady=5)
+    # 创建LLM和Embedding的Tabview
+    self.config_tabview = ctk.CTkTabview(self.model_config_tab)
+    self.config_tabview.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
-    self.ai_config_tab = self.config_tabview.add("LLM Model settings")
-    self.embeddings_config_tab = self.config_tabview.add("Embedding settings")
+    self.ai_config_tab = self.config_tabview.add("LLM模型设置")
+    self.embeddings_config_tab = self.config_tabview.add("嵌入模型设置")
 
     build_ai_config_tab(self)
     build_embeddings_config_tab(self)
 
     # 底部的"保存配置"和"加载配置"按钮
-    self.btn_frame_config = ctk.CTkFrame(self.config_frame)
+    self.btn_frame_config = ctk.CTkFrame(self.model_config_tab)
     self.btn_frame_config.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
     self.btn_frame_config.columnconfigure(0, weight=1)
     self.btn_frame_config.columnconfigure(1, weight=1)
 
-    save_config_btn = ctk.CTkButton(self.btn_frame_config, text="保存当前选择接口配置到文件", command=self.save_config_btn, font=("Microsoft YaHei", 12))
+    save_config_btn = ctk.CTkButton(self.btn_frame_config, text="保存配置", command=self.save_config_btn, font=("Microsoft YaHei", 12))
     save_config_btn.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
-    load_config_btn = ctk.CTkButton(self.btn_frame_config, text="加载当前选择接口配置到程序", command=self.load_config_btn, font=("Microsoft YaHei", 12))
+    load_config_btn = ctk.CTkButton(self.btn_frame_config, text="加载配置", command=self.load_config_btn, font=("Microsoft YaHei", 12))
     load_config_btn.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
 def build_ai_config_tab(self):
@@ -153,7 +154,7 @@ def build_ai_config_tab(self):
     self.timeout_value_label.grid(row=6, column=2, padx=5, pady=5, sticky="w")
 
     # 添加测试按钮
-    test_btn = ctk.CTkButton(self.ai_config_tab, text="测试配置", command=self.test_llm_config, font=("Microsoft YaHei", 12))
+    test_btn = ctk.CTkButton(self.ai_config_tab, text="测试LLM配置", command=self.test_llm_config, font=("Microsoft YaHei", 12))
     test_btn.grid(row=7, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
 
 def build_embeddings_config_tab(self):
@@ -223,7 +224,7 @@ def build_embeddings_config_tab(self):
     emb_retrieval_k_entry.grid(row=4, column=1, padx=5, pady=5, sticky="nsew")
 
     # 添加测试按钮
-    test_btn = ctk.CTkButton(self.embeddings_config_tab, text="测试配置", command=self.test_embedding_config, font=("Microsoft YaHei", 12))
+    test_btn = ctk.CTkButton(self.embeddings_config_tab, text="测试嵌入配置", command=self.test_embedding_config, font=("Microsoft YaHei", 12))
     test_btn.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 def load_config_btn(self):
@@ -289,7 +290,7 @@ def save_config_btn(self):
         "genre": self.genre_var.get(),
         "num_chapters": self.safe_get_int(self.num_chapters_var, 10),
         "word_number": self.safe_get_int(self.word_number_var, 3000),
-        "filepath": self.filepath_var.get(),
+        "filepath": "",  # 不保存小说路径，避免与小说管理冲突
         "chapter_num": self.chapter_num_var.get(),
         "user_guidance": self.user_guide_text.get("0.0", "end").strip(),
         "characters_involved": self.characters_involved_var.get(),

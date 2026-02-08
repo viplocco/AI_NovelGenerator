@@ -302,13 +302,61 @@ def build_chapter_prompt(
     arch_file = os.path.join(filepath, "Novel_architecture.txt")
     novel_architecture_text = read_file(arch_file)
     directory_file = os.path.join(filepath, "Novel_directory.txt")
-    blueprint_text = read_file(directory_file)
+
+    # 检查章节目录文件是否存在
+    if not os.path.exists(directory_file):
+        print(f"警告: 章节目录文件不存在: {directory_file}")
+        blueprint_text = ""
+    else:
+        blueprint_text = read_file(directory_file)
+        if not blueprint_text.strip():
+            print(f"警告: 章节目录文件为空: {directory_file}")
+        else:
+            pass
     global_summary_file = os.path.join(filepath, "global_summary.txt")
     global_summary_text = read_file(global_summary_file)
     character_state_file = os.path.join(filepath, "character_state.txt")
     character_state_text = read_file(character_state_file)
+    plot_arcs_file = os.path.join(filepath, "plot_arcs.txt")
+    plot_arcs_text = ""
+    if os.path.exists(plot_arcs_file):
+        plot_arcs_text = read_file(plot_arcs_file)
     
     # 获取章节信息
+    if not blueprint_text or not blueprint_text.strip():
+        print(f"错误: 章节目录为空，无法获取章节 {novel_number} 的信息")
+        print(f"提示: 请先生成章节目录（步骤2）")
+        # 返回一个基本的提示词，不包含章节信息
+        return next_chapter_draft_prompt.format(
+            user_guidance=user_guidance if user_guidance else "无特殊指导",
+            global_summary=global_summary_text if global_summary_text else "（无全局摘要）",
+            previous_chapter_excerpt="（无前文）",
+            character_state=character_state_text if character_state_text else "（无角色状态）",
+            short_summary="（无章节摘要）",
+            novel_number=novel_number,
+            chapter_title=f"第{novel_number}章",
+            chapter_role="",
+            chapter_purpose="",
+            suspense_level="",
+            foreshadowing="",
+            plot_twist_level="",
+            chapter_summary="",
+            word_number=word_number,
+            characters_involved=characters_involved,
+            key_items=key_items,
+            scene_location=scene_location,
+            time_constraint=time_constraint,
+            next_chapter_number=novel_number + 1,
+            next_chapter_title=f"第{novel_number + 1}章",
+            next_chapter_role="",
+            next_chapter_purpose="",
+            next_chapter_suspense_level="",
+            next_chapter_foreshadowing="",
+            next_chapter_plot_twist_level="",
+            next_chapter_summary="",
+            filtered_context="（无知识库内容）"
+        )
+
     chapter_info = get_chapter_info_from_blueprint(blueprint_text, novel_number)
     chapter_title = chapter_info["chapter_title"]
     chapter_role = chapter_info["chapter_role"]
@@ -343,6 +391,7 @@ def build_chapter_prompt(
             chapter_purpose=chapter_purpose,
             suspense_level=suspense_level,
             foreshadowing=foreshadowing,
+            plot_arcs=plot_arcs_text if plot_arcs_text else "（无剧情要点）",
             plot_twist_level=plot_twist_level,
             chapter_summary=chapter_summary,
             characters_involved=characters_involved,
@@ -486,6 +535,7 @@ def build_chapter_prompt(
         previous_chapter_excerpt=previous_excerpt,
         character_state=character_state_text,
         short_summary=short_summary,
+        plot_arcs=plot_arcs_text if plot_arcs_text else "（无剧情要点）",
         novel_number=novel_number,
         chapter_title=chapter_title,
         chapter_role=chapter_role,

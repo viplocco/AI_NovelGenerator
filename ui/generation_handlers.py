@@ -409,6 +409,12 @@ def do_consistency_check(self):
                 return
 
             self.safe_log("开始一致性审校...")
+            # 读取剧情要点
+            plot_arcs_file = os.path.join(filepath, "plot_arcs.txt")
+            plot_arcs = ""
+            if os.path.exists(plot_arcs_file):
+                plot_arcs = read_file(plot_arcs_file)
+            
             result = check_consistency(
                 novel_setting="",
                 character_state=read_file(os.path.join(filepath, "character_state.txt")),
@@ -421,7 +427,7 @@ def do_consistency_check(self):
                 interface_format=interface_format,
                 max_tokens=max_tokens,
                 timeout=timeout,
-                plot_arcs=""
+                plot_arcs=plot_arcs
             )
             self.safe_log("审校结果：")
             self.safe_log(result)

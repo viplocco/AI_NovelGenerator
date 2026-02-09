@@ -1305,7 +1305,7 @@ class RoleLibrary:
                         current_attribute = None
 
                 # 改进条目内容提取 - 支持多种树形结构符号
-                elif current_attribute and (line.startswith("│ ├──") or line.startswith("│ └──")):
+                elif current_attribute and (line.startswith("│  ├──") or line.startswith("│  └──")):
                     # 提取整个条目内容
                     item_content = line.strip()
                     # 去掉前面的符号和空格

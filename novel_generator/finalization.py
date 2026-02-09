@@ -32,12 +32,14 @@ def finalize_chapter(
     对指定章节做最终处理：更新前文摘要、更新角色状态、插入向量库等。
     默认无需再做扩写操作，若有需要可在外部调用 enrich_chapter_text 处理后再定稿。
     """
+    logging.info(f"📖 开始定稿第{novel_number}章...")
     chapters_dir = os.path.join(filepath, "chapters")
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
     chapter_text = read_file(chapter_file).strip()
     if not chapter_text:
-        logging.warning(f"Chapter {novel_number} is empty, cannot finalize.")
+        logging.warning(f"⚠️ 第{novel_number}章内容为空，无法定稿")
         return
+    logging.info(f"✓ 已读取第{novel_number}章内容（共{len(chapter_text)}字）")
 
     global_summary_file = os.path.join(filepath, "global_summary.txt")
     old_global_summary = read_file(global_summary_file)
@@ -54,6 +56,7 @@ def finalize_chapter(
         timeout=timeout
     )
 
+    logging.info("📝 正在更新前文摘要...")
     prompt_summary = summary_prompt.format(
         chapter_text=chapter_text,
         global_summary=old_global_summary
@@ -61,7 +64,10 @@ def finalize_chapter(
     new_global_summary = invoke_with_cleaning(llm_adapter, prompt_summary)
     if not new_global_summary.strip():
         new_global_summary = old_global_summary
+        logging.warning("⚠️ 前文摘要生成失败，保留原摘要")
+    logging.info(f"✓ 前文摘要已更新（共{len(new_global_summary)}字）")
 
+    logging.info("👤 正在更新角色状态...")
     prompt_char_state = update_character_state_prompt.format(
         chapter_text=chapter_text,
         old_state=old_character_state
@@ -69,6 +75,8 @@ def finalize_chapter(
     new_char_state = invoke_with_cleaning(llm_adapter, prompt_char_state)
     if not new_char_state.strip():
         new_char_state = old_character_state
+        logging.warning("⚠️ 角色状态更新失败，保留原状态")
+    logging.info(f"✓ 角色状态已更新（共{len(new_char_state)}字）")
 
     # 更新剧情要点
     plot_arcs_file = os.path.join(filepath, "plot_arcs.txt")
@@ -93,6 +101,7 @@ def finalize_chapter(
     # 同步角色库
     _sync_character_library(filepath, new_char_state)
 
+    logging.info("🔍 正在更新向量库...")
     update_vector_store(
         embedding_adapter=create_embedding_adapter(
             embedding_interface_format,
@@ -103,8 +112,9 @@ def finalize_chapter(
         new_chapter=chapter_text,
         filepath=filepath
     )
+    logging.info("✓ 向量库更新完成")
 
-    logging.info(f"Chapter {novel_number} has been finalized.")
+    logging.info(f"✅ 第{novel_number}章定稿完成！")
 
 def enrich_chapter_text(
     chapter_text: str,

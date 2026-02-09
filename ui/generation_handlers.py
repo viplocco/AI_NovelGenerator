@@ -445,8 +445,6 @@ def generate_chapter_draft_ui(self):
             def stream_callback(chunk: str):
                 """流式输出回调函数，实时更新UI显示"""
                 if chunk:
-                    # 添加调试日志
-                    print(f"stream_callback被调用，chunk长度: {len(chunk)}")
                     # 在主线程中更新UI
                     # 使用闭包捕获chunk的值
                     def update_ui():
@@ -574,15 +572,22 @@ def finalize_chapter_ui(self):
                 timeout=timeout_val
             )
             self.safe_log(f"✅ 第{chap_num}章定稿完成（已更新前文摘要、角色状态、向量库）。")
-            # 更新按钮状态
-            self.update_step_buttons_state()
-
-            final_text = read_file(chapter_file)
-            self.master.after(0, lambda: self.show_chapter_in_textbox(final_text))
+            
+            # 在主线程中更新UI
+            def update_ui():
+                # 更新按钮状态
+                self.update_step_buttons_state()
+                # 显示最终文本
+                final_text = read_file(chapter_file)
+                self.show_chapter_in_textbox(final_text)
+                # 最后启用定稿按钮
+                self.enable_button_safe(self.btn_finalize_chapter)
+            
+            self.master.after(0, update_ui)
         except Exception:
             self.handle_exception("定稿章节时出错")
-        finally:
-            self.enable_button_safe(self.btn_finalize_chapter)
+            # 出错时也要启用按钮
+            self.master.after(0, lambda: self.enable_button_safe(self.btn_finalize_chapter))
     threading.Thread(target=task, daemon=True).start()
 
 def do_consistency_check(self):

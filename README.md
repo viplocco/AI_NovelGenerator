@@ -1,275 +1,428 @@
-# 📖 自动小说生成工具
-
->- 目前开学了，没什么时间维护该项目，后续更新可能得等长假才能继续
+# 📖 AI Novel Generator - 智能小说生成器
 
 <div align="center">
-  
-✨ **核心功能** ✨
 
-| 功能模块          | 关键能力                          |
-|-------------------|----------------------------------|
-| 🎨 小说设定工坊    | 世界观架构 / 角色设定 / 剧情蓝图   |
-| 📖 智能章节生成    | 多阶段生成保障剧情连贯性           |
-| 🧠 状态追踪系统    | 角色发展轨迹 / 伏笔管理系统         |
-| 🔍 语义检索引擎    | 基于向量的长程上下文一致性维护      |
-| 📚 知识库集成      | 支持本地文档参考         |
-| ✅ 自动审校机制    | 检测剧情矛盾与逻辑冲突          |
-| 🖥 可视化工作台    | 全流程GUI操作，配置/生成/审校一体化 |
+[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CustomTkinter](https://img.shields.io/badge/GUI-CustomTkinter-orange.svg)](https://github.com/TomSchimansky/CustomTkinter)
+
+✨ **基于大语言模型的智能小说创作助手** ✨
+
+| 功能模块 | 关键能力 |
+|---------|---------|
+| 🎨 小说设定工坊 | 世界观架构 / 角色弧光 / 情节蓝图 |
+| 📖 智能章节生成 | 多阶段生成保障剧情连贯性 |
+| 🧠 状态追踪系统 | 角色发展轨迹 / 伏笔管理系统 |
+| 🔍 语义检索引擎 | 基于向量的长程上下文一致性维护 |
+| 📚 知识库集成 | 支持本地文档作为创作参考 |
+| ✅ 自动审校机制 | 检测剧情矛盾与逻辑冲突 |
+| 🖥 可视化工作台 | 全流程GUI操作，无需编程 |
+
+> 采用**雪花写作法**、**角色弧光理论**和**悬念三要素模型**，助您高效创作逻辑严谨、设定统一的长篇故事
 
 </div>
 
-> 一款基于大语言模型的多功能小说生成器，助您高效创作逻辑严谨、设定统一的长篇故事
-
-### 更新日志
-
-#### 2025-03-05
-- 添加角色库功能
-
-#### 2025-03-09
-- 添加字数显示
-
-#### 2025-03-13
-1. 新增闲云修改功能
-2. 将"本章指导"改为"内容指导"
-3. 在生成架构中的以下部分加入引导词内容指导：
-   - 2. 角色动力学设定（角色弧光模型）
-   - 3. 世界构建矩阵（三维度交织法）
-   - 4. 情节架构（三幕式悬念）
-   - 5. 章节目录生成（悬念节奏曲线）
-   以便生成角色动力学时能更准确地根据实际需求生成内容
-4. 在终端恢复显示LLM提示词与返回内容，方便复盘和参考修改提示词
 ---
 
-## 📑 目录导航
-1. [环境准备](#-环境准备)  
-2. [项目架构](#-项目架构)  
-3. [配置指南](#⚙️-配置指南)  
-4. [运行说明](#🚀-运行说明)  
-5. [使用教程](#📘-使用教程)  
-6. [疑难解答](#❓-疑难解答)  
+## 📑 目录
+
+1. [项目特点](#-项目特点)
+2. [更新日志](#-更新日志)
+3. [环境准备](#-环境准备)
+4. [安装说明](#-安装说明)
+5. [项目架构](#-项目架构)
+6. [配置指南](#-配置指南)
+7. [运行说明](#-运行说明)
+8. [使用教程](#-使用教程)
+9. [支持的模型](#-支持的模型)
+10. [疑难解答](#-疑难解答)
+
+---
+
+## ⭐ 项目特点
+
+### 🎯 理论支撑
+- **雪花写作法**：从核心概念逐步扩展，分层构建完整故事
+- **角色弧光理论**：确保角色在故事中经历合理的成长或堕落
+- **悬念三要素模型**：在每章中平衡角色发展、世界观展开和剧情推进
+
+### 🔄 长程连贯保障
+- **向量检索**：基于语义相似度检索前文相关内容
+- **全局摘要**：维护故事整体脉络
+- **角色状态追踪**：实时记录角色的状态变化
+- **伏笔管理系统**：自动跟踪和回收伏笔
+
+### 💡 智能功能
+- **断点续传**：架构生成和目录生成支持中断后继续
+- **流式输出**：实时查看生成内容，无需等待
+- **智能分块**：根据模型上下文限制自动分块生成
+- **知识库集成**：支持导入本地文档作为创作参考
+
+---
+
+## 📝 更新日志
+
+### 2025-03
+- 新增角色库功能，支持角色分类管理
+- 添加实时字数显示
+- 优化架构生成向导，支持流式输出
+- 改进章节目录生成对话框，支持生成中实时查看和编辑
+- 修复多处稳定性问题
+
+### 2025-02
+- 添加架构生成向导，分步骤生成小说设定
+- 支持多种Embedding提供商
+- 新增一致性检查功能
+
+### 2025-01
+- 项目初始版本发布
+- 支持基本的小说生成流程
 
 ---
 
 ## 🛠 环境准备
-确保满足以下运行条件：
-- **Python 3.9+** 运行环境（推荐3.10-3.12之间）
-- **pip** 包管理工具
-- 有效API密钥：
-  - 云端服务：OpenAI / DeepSeek 等
-  - 本地服务：Ollama 等兼容 OpenAI 的接口
+
+### 系统要求
+- **操作系统**：Windows 10/11, macOS, Linux
+- **Python**：3.9 - 3.12（推荐3.10或3.11）
+- **内存**：建议 8GB+
+- **存储**：根据小说长度，建议预留 1GB+ 空间
+
+### API 密钥
+需要以下至少一种服务的API密钥：
+- **云端服务**：OpenAI, DeepSeek, Azure OpenAI, Google Gemini 等
+- **本地服务**：Ollama, LM Studio 等兼容 OpenAI 接口的服务
 
 ---
 
-
 ## 📥 安装说明
-1. **下载项目**  
-   - 通过 [GitHub](https://github.com) 下载项目 ZIP 文件，或使用以下命令克隆本项目：
-     ```bash
-     git clone https://github.com/YILING0013/AI_NovelGenerator
-     ```
 
-2. **安装编译工具（可选）**  
-   - 如果对某些包无法正常安装，访问 [Visual Studio Build Tools](https://visualstudio.microsoft.com/zh-hans/visual-cpp-build-tools/) 下载并安装C++编译工具，用于构建部分模块包；
-   - 安装时，默认只包含 MSBuild 工具，需手动勾选左上角列表栏中的 **C++ 桌面开发** 选项。
+### 1. 克隆项目
 
-3. **安装依赖并运行**  
-   - 打开终端，进入项目源文件目录：
-     ```bash
-     cd AI_NovelGenerator
-     ```
-   - 安装项目依赖：
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - 安装完成后，运行主程序：
-     ```bash
-     python main.py
-     ```
+```bash
+git clone https://github.com/YILING0013/AI_NovelGenerator.git
+cd AI_NovelGenerator
+```
 
->如果缺失部分依赖，后续**手动执行**
->```bash
->pip install XXX
->```
->进行安装即可
+### 2. 创建虚拟环境（推荐）
+
+```bash
+# Windows
+python -m venv .venv
+.venv\Scripts\activate
+
+# macOS/Linux
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+> **注意**：如果在Windows上安装依赖时遇到编译错误，需要安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/zh-hans/visual-cpp-build-tools/)，并勾选 **"C++桌面开发"** 组件。
+
+### 4. 运行程序
+
+```bash
+python main.py
+```
+
+---
 
 ## 🗂 项目架构
+
 ```
-novel-generator/
-├── main.py                      # 入口文件, 运行 GUI
-├── config.json                  # 用户配置文件
-├── requirements.txt             # 项目依赖
+AI_NovelGenerator/
+├── main.py                      # 程序入口
+├── config.json                  # 用户配置（自动生成）
+├── requirements.txt             # 依赖清单
 ├── icon.ico                     # 应用图标
-├── chapter_directory_parser.py  # 目录解析
-├── config_manager.py            # 配置管理 (API Key, Base URL)
-├── consistency_checker.py       # 一致性检查, 防止剧情冲突
-├── embedding_adapters.py        # Embedding 接口封装
-├── llm_adapters.py              # LLM 接口封装
-├── prompt_definitions.py        # 定义 AI 提示词
+├── LICENSE                      # 开源协议
+│
+├── llm_adapters.py              # LLM接口适配器（支持10+提供商）
+├── embedding_adapters.py        # Embedding接口适配器
+├── config_manager.py            # 配置管理
+├── consistency_checker.py       # 一致性检查
+├── prompt_definitions.py        # AI提示词定义
+├── chapter_directory_parser.py  # 章节目录解析器
+├── utils.py                     # 工具函数
 ├── tooltips.py                  # 界面提示文本
-├── utils.py                     # 常用工具函数, 文件操作
-├── novel_generator/             # 小说生成核心模块
-│   ├── __init__.py
+│
+├── novel_generator/             # 核心生成模块
 │   ├── architecture.py          # 世界观架构生成
-│   ├── blueprint.py             # 剧情蓝图生成
-│   ├── chapter.py               # 章节生成核心逻辑
-│   ├── common.py                # 通用工具函数
+│   ├── architecture_wizard.py   # 架构生成向导
+│   ├── blueprint.py             # 章节目录生成
+│   ├── blueprint_stream.py      # 流式目录生成
+│   ├── chapter.py               # 章节生成核心
+│   ├── common.py                # 通用工具
 │   ├── finalization.py          # 章节定稿处理
 │   ├── knowledge.py             # 知识库集成
+│   ├── stream_utils.py          # 流式输出工具
 │   └── vectorstore_utils.py     # 向量数据库工具
+│
 ├── ui/                          # 图形界面模块
-│   ├── __init__.py
-│   ├── chapters_tab.py          # 章节管理界面
-│   ├── character_tab.py         # 角色管理界面
-│   ├── config_tab.py            # 配置设置界面
-│   ├── context_menu.py          # 右键菜单
-│   ├── directory_tab.py        # 目录管理界面
-│   ├── generation_handlers.py   # 生成处理逻辑
-│   ├── helpers.py               # 界面辅助函数
-│   ├── main_tab.py              # 主标签页
 │   ├── main_window.py           # 主窗口
 │   ├── novel_manager.py         # 小说管理器
-│   ├── novel_params_tab.py      # 小说参数设置
 │   ├── role_library.py          # 角色库管理
-│   ├── setting_tab.py           # 设定管理界面
-│   └── summary_tab.py           # 摘要管理界面
-└── data/                        # 数据存储目录
-    └── novels/                  # 生成小说存储
+│   ├── main_tab.py              # 主标签页
+│   ├── config_tab.py            # 配置标签页
+│   ├── novel_params_tab.py      # 小说参数标签页
+│   ├── setting_tab.py           # 设定管理标签页
+│   ├── directory_tab.py         # 目录管理标签页
+│   ├── character_tab.py         # 角色管理标签页
+│   ├── summary_tab.py           # 摘要管理标签页
+│   ├── chapters_tab.py          # 章节管理标签页
+│   ├── generation_handlers.py   # 生成处理逻辑
+│   ├── chapter_directory_dialog.py # 目录生成对话框
+│   └── helpers.py               # 界面辅助函数
+│
+└── data/                        # 数据存储
+    ├── default_cover.png
+    └── novels/                  # 小说存储目录
+        └── {novel_id}/
+            ├── novel_info.json          # 小说元数据
+            ├── Novel_architecture.txt   # 世界观架构
+            ├── Novel_directory.txt      # 章节目录
+            ├── character_state.txt      # 角色状态
+            ├── global_summary.txt       # 全局摘要
+            ├── plot_arcs.txt            # 剧情要点
+            ├── 角色库/                   # 角色库
+            ├── chapters/                # 章节正文
+            └── vectorstore/             # 向量数据库
 ```
 
 ---
 
 ## ⚙️ 配置指南
-### 📌 基础配置（config.json）
+
+### 首次启动配置
+
+首次运行程序时，需要在"API配置"标签页设置以下参数：
+
+#### 生成模型配置
+| 参数 | 说明 | 示例 |
+|-----|------|------|
+| `api_key` | API密钥 | `sk-xxxxxxxx` |
+| `base_url` | API基础URL | `https://api.openai.com/v1` |
+| `interface_format` | 接口格式 | `OpenAI` / `DeepSeek` / `Ollama` 等 |
+| `model_name` | 模型名称 | `gpt-4o-mini` / `deepseek-chat` |
+| `temperature` | 创意度(0-1) | `0.7`（越高越创造性） |
+| `max_tokens` | 最大输出长度 | `4096` |
+
+#### Embedding模型配置
+| 参数 | 说明 | 示例 |
+|-----|------|------|
+| `embedding_api_key` | Embedding API密钥 | `sk-xxxxxxxx` |
+| `embedding_url` | Embedding服务URL | `https://api.openai.com/v1` |
+| `embedding_interface_format` | 接口格式 | `OpenAI` / `Ollama` 等 |
+| `embedding_model_name` | 模型名称 | `text-embedding-ada-002` |
+| `embedding_retrieval_k` | 检索数量 | `4`（每章检索多少条相关内容） |
+
+#### 小说参数配置
+| 参数 | 说明 | 示例 |
+|-----|------|------|
+| `topic` | 小说主题 | `"废土世界的AI叛乱"` |
+| `genre` | 小说类型 | `"科幻"` / `"玄幻"` / `"都市"` |
+| `num_chapters` | 总章节数 | `120` |
+| `word_number` | 每章字数 | `4000` |
+| `filepath` | 保存路径 | `D:/MyNovels/Project1` |
+
+### 配置示例（config.json）
+
 ```json
 {
-    "api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXX",
     "base_url": "https://api.openai.com/v1",
     "interface_format": "OpenAI",
     "model_name": "gpt-4o-mini",
     "temperature": 0.7,
     "max_tokens": 4096,
-    "embedding_api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "embedding_api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXX",
     "embedding_interface_format": "OpenAI",
     "embedding_url": "https://api.openai.com/v1",
     "embedding_model_name": "text-embedding-ada-002",
     "embedding_retrieval_k": 4,
-    "topic": "星穹铁道主角星穿越到原神提瓦特大陆，拯救提瓦特大陆，并与其中的角色展开爱恨情仇的小说",
+    "topic": "星穹铁道主角穿越到原神提瓦特大陆的冒险故事",
     "genre": "玄幻",
-    "num_chapters": 120,
+    "num_chapters": 100,
     "word_number": 4000,
-    "filepath": "D:/AI_NovelGenerator/filepath"
+    "filepath": "D:/AI_NovelGenerator/my_novel"
 }
 ```
-
-### 🔧 配置说明
-1. **生成模型配置**
-   - `api_key`: 大模型服务的API密钥
-   - `base_url`: API终端地址（本地服务填Ollama等地址）
-   - `interface_format`: 接口模式
-   - `model_name`: 主生成模型名称（如gpt-4, claude-3等）
-   - `temperature`: 创意度参数（0-1，越高越有创造性）
-   - `max_tokens`: 模型最大回复长度
-
-2. **Embedding模型配置**
-   - `embedding_model_name`: 模型名称（如Ollama的nomic-embed-text）
-   - `embedding_url`: 服务地址
-   - `embedding_retrieval_k`: 
-
-3. **小说参数配置**
-   - `topic`: 核心故事主题
-   - `genre`: 作品类型
-   - `num_chapters`: 总章节数
-   - `word_number`: 单章目标字数
-   - `filepath`: 生成文件存储路径
 
 ---
 
 ## 🚀 运行说明
-### **方式 1：使用 Python 解释器**
+
+### 方式1：直接运行
+
 ```bash
 python main.py
 ```
-执行后，GUI 将会启动，你可以在图形界面中进行各项操作。
 
-### **方式 2：打包为可执行文件**
-如果你想在无 Python 环境的机器上使用本工具，可以使用 **PyInstaller** 进行打包：
+### 方式2：打包为可执行文件
+
+如需在无Python环境的机器上运行：
 
 ```bash
 pip install pyinstaller
 pyinstaller main.spec
 ```
-打包完成后，会在 `dist/` 目录下生成可执行文件（如 Windows 下的 `main.exe`）。
+
+打包完成后，在 `dist/` 目录下找到 `main.exe`（Windows）或对应可执行文件。
 
 ---
 
 ## 📘 使用教程
-1. **启动后，先完成基本参数设置：**  
-   - **API Key & Base URL**（如 `https://api.openai.com/v1`）  
-   - **模型名称**（如 `gpt-3.5-turbo`、`gpt-4o` 等）  
-   - **Temperature** (0~1，决定文字创意程度)  
-   - **主题(Topic)**（如 “废土世界的 AI 叛乱”）  
-   - **类型(Genre)**（如 “科幻”/“魔幻”/“都市幻想”）  
-   - **章节数**、**每章字数**（如 10 章，每章约 3000 字）  
-   - **保存路径**（建议创建一个新的输出文件夹）
 
-2. **点击「Step1. 生成设定」**  
-   - 系统将基于主题、类型、章节数等信息，生成：  
-     - `Novel_setting.txt`：包含世界观、角色信息、雷点暗线等。  
-   - 可以在生成后的 `Novel_setting.txt` 中查看或修改设定内容。
+### 快速开始
 
-3. **点击「Step2. 生成目录」**  
-   - 系统会根据已完成的 `Novel_setting.txt` 内容，为全部章节生成：  
-     - `Novel_directory.txt`：包括每章标题和简要提示。  
-   - 可以在生成后的文件中查看、修改或补充章节标题和描述。
+#### Step 1: 创建小说
+1. 在"小说管理"标签页点击"新建小说"
+2. 填写小说基本信息（主题、类型、章节数等）
+3. 设置保存路径
 
-4. **点击「Step3. 生成章节草稿」**  
-   - 在生成章节之前，你可以：  
-     - **设置章节号**（如写第 1 章，就填 `1`）  
-     - **在“本章指导”输入框**中提供对本章剧情的任何期望或提示  
-   - 点击按钮后，系统将：  
-     - 自动读取前文设定、`Novel_directory.txt`、以及已定稿章节  
-     - 调用向量检索回顾剧情，保证上下文连贯  
-     - 生成本章大纲 (`outline_X.txt`) 及正文 (`chapter_X.txt`)  
-   - 生成完成后，你可在左侧的文本框查看、编辑本章草稿内容。
+#### Step 2: 生成设定（世界观架构）
+1. 点击"Step1. 生成设定"
+2. 使用架构生成向导分步骤生成：
+   - 核心种子（主题定位）
+   - 世界观构建
+   - 角色动力学设定
+   - 三幕式情节架构
+3. 生成的设定保存在 `Novel_architecture.txt`
 
-5. **点击「Step4. 定稿当前章节」**  
-   - 系统将：  
-     - **更新全局摘要**（写入 `global_summary.txt`）  
-     - **更新角色状态**（写入 `character_state.txt`）  
-     - **更新向量检索库**（保证后续章节可以调用最新信息）  
-     - **更新剧情要点**（如 `plot_arcs.txt`）  
-   - 定稿完成后，你可以在 `chapter_X.txt` 中看到定稿后的文本。
+#### Step 3: 生成章节目录
+1. 点击"Step2. 生成目录"
+2. 设置生成范围（起始章节-结束章节）
+3. 填写生成要求（可选）
+4. 点击"开始生成"，实时查看生成内容
+5. 生成的目录保存在 `Novel_directory.txt`
 
-6. **一致性检查（可选）**  
-   - 点击「[可选] 一致性审校」按钮，对最新章节进行冲突检测，如角色逻辑、剧情前后矛盾等。  
-   - 若有冲突，会在日志区输出详细提示。
+#### Step 4: 生成章节草稿
+1. 点击"Step3. 生成章节草稿"
+2. 设置章节号
+3. 填写本章指导内容（可选）
+4. 点击"生成草稿"
+5. 生成的内容显示在编辑区
 
-7. **重复第 4-6 步** 直到所有章节生成并定稿！
+#### Step 5: 定稿章节
+1. 编辑并确认章节内容
+2. 点击"Step4. 定稿当前章节"
+3. 系统自动更新：
+   - 全局摘要
+   - 角色状态
+   - 向量数据库
+   - 剧情要点
 
-> **向量检索配置提示**  
-> 1. embedding模型需要显示指定接口和模型名称；
-> 2. 使用**本地Ollama**的**Embedding**时需提前启动Ollama服务：  
->    ```bash
->    ollama serve  # 启动服务
->    ollama pull nomic-embed-text  # 下载/启用模型
->    ```
-> 3. 切换不同Embedding模型后建议清空vectorstore目录
-> 4. 云端Embedding需确保对应API权限已开通
+#### Step 6: 循环生成
+重复 Step 4-5 直到完成所有章节
+
+### 进阶功能
+
+#### 知识库集成
+1. 在"知识库"标签页点击"导入知识文件"
+2. 选择本地文档（支持txt, pdf, docx等）
+3. 生成章节时会自动检索相关内容作为参考
+
+#### 一致性检查
+1. 生成章节后，点击"一致性审校"
+2. 系统检测剧情矛盾、角色逻辑冲突等
+3. 根据提示修改内容
+
+#### 角色库管理
+1. 在"角色库"标签页查看所有角色
+2. 支持按分类查看（全部/主要/次要等）
+3. 点击角色名称可查看详细信息
+
+---
+
+## 🤖 支持的模型
+
+### 生成模型
+
+| 提供商 | 接口格式 | 说明 |
+|-------|---------|------|
+| OpenAI | `OpenAI` | GPT-3.5/GPT-4系列 |
+| DeepSeek | `DeepSeek` | deepseek-chat/v3 |
+| Azure OpenAI | `Azure OpenAI` | 微软云服务 |
+| Google Gemini | `Gemini` | gemini-pro等 |
+| Ollama | `Ollama` | 本地部署 |
+| LM Studio | `LM Studio` | 本地GUI工具 |
+| Azure AI | `Azure AI` | Azure AI Inference |
+| 火山引擎 | `火山引擎` | 字节跳动云服务 |
+| 硅基流动 | `硅基流动` | SiliconFlow |
+| 阿里云百炼 | `阿里云百炼` | 阿里云服务 |
+
+### Embedding模型
+
+| 提供商 | 推荐模型 |
+|-------|---------|
+| OpenAI | `text-embedding-ada-002` |
+| Azure OpenAI | `text-embedding-ada-002` |
+| Ollama | `nomic-embed-text` |
+| LM Studio | 根据本地部署选择 |
+| Gemini | `text-embedding-004` |
+| SiliconFlow | `BAAI/bge-large-zh-v1.5` |
+
+### 本地部署（Ollama）
+
+```bash
+# 启动Ollama服务
+ollama serve
+
+# 下载生成模型
+ollama pull qwen2.5:14b
+
+# 下载Embedding模型
+ollama pull nomic-embed-text
+```
 
 ---
 
 ## ❓ 疑难解答
+
 ### Q1: Expecting value: line 1 column 1 (char 0)
+**原因**：API返回了非JSON格式内容（可能是HTML错误页面）
+**解决**：
+1. 检查API密钥是否正确
+2. 检查网络连接是否稳定
+3. 查看服务商是否有服务中断
 
-该问题大概率由于API未正确响应造成，也许响应了一个html？其它内容，导致出现该报错；
+### Q2: HTTP/1.1 504 Gateway Timeout
+**原因**：请求超时
+**解决**：
+1. 增加超时时间设置
+2. 检查网络连接
+3. 如果是本地服务，检查Ollama是否正常运行
 
+### Q3: 如何切换Embedding提供商？
+**解决**：在"API配置"标签页的Embedding部分修改配置，切换后建议清空 `data/novels/{novel_id}/vectorstore/` 目录重新生成。
 
-### Q2: HTTP/1.1 504 Gateway Timeout？
-确认接口是否稳定；
+### Q4: 生成的内容不连贯
+**原因**：可能是Embedding检索失败或向量库未正确构建
+**解决**：
+1. 检查Embedding配置是否正确
+2. 清空vectorstore目录重新生成
+3. 确保定稿时成功更新了向量库
 
-### Q3: 如何切换不同的Embedding提供商？
-在GUI界面中对应输入即可。
+### Q5: 如何备份我的小说？
+**解决**：整个 `data/novels/{novel_id}/` 目录就是完整的小说数据，直接复制该目录即可备份。
 
 ---
 
-如有更多问题或需求，欢迎在**项目 Issues** 中提出。
+## 📄 开源协议
+
+本项目采用 [MIT License](LICENSE) 开源协议。
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+**注意**：目前作者时间有限，更新可能较慢，敬请谅解。

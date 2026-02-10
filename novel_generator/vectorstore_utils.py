@@ -22,7 +22,7 @@ from chromadb.config import Settings
 try:
     from langchain_core.documents import Document
 except ImportError:
-    from langchain.docstore.document import Document
+    from langchain.docstore.document import Document  # type: ignore
 from sklearn.metrics.pairwise import cosine_similarity
 from .common import call_with_retry
 
@@ -186,30 +186,36 @@ def update_vector_store(embedding_adapter, new_chapter: str, filepath: str):
     """
     将最新章节文本插入到向量库中。
     若库不存在则初始化；若初始化/更新失败，则跳过。
+    返回值：成功时返回更新的数据条数，失败时返回0
     """
     from utils import read_file, clear_file_content, save_string_to_txt
     splitted_texts = split_text_for_vectorstore(new_chapter)
     if not splitted_texts:
         logging.warning("No valid text to insert into vector store. Skipping.")
-        return
+        return 0
 
+    logging.info(f"📝 章节文本已分段，共{len(splitted_texts)}段")
+    
     store = load_vector_store(embedding_adapter, filepath)
     if not store:
         logging.info("Vector store does not exist or failed to load. Initializing a new one for new chapter...")
         store = init_vector_store(embedding_adapter, splitted_texts, filepath)
         if not store:
             logging.warning("Init vector store failed, skip embedding.")
+            return 0
         else:
-            logging.info("New vector store created successfully.")
-        return
+            logging.info(f"✓ 新向量库创建成功，共插入{len(splitted_texts)}条数据")
+            return len(splitted_texts)
 
     try:
         docs = [Document(page_content=str(t)) for t in splitted_texts]
         store.add_documents(docs)
-        logging.info("Vector store updated with the new chapter splitted segments.")
+        logging.info(f"✓ 向量库更新成功，本次更新{len(docs)}条数据")
+        return len(docs)
     except Exception as e:
         logging.warning(f"Failed to update vector store: {e}")
         traceback.print_exc()
+        return 0
 
 def get_relevant_context_from_vector_store(embedding_adapter, query: str, filepath: str, k: int = 2) -> str:
     """

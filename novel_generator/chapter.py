@@ -90,6 +90,7 @@ def summarize_recent_chapters(
             plot_twist_level=chapter_info.get("plot_twist_level", "★☆☆☆☆"),
             surface_cultivation=chapter_info.get("surface_cultivation", "未设定"),
             actual_cultivation=chapter_info.get("actual_cultivation", "未设定"),
+            spatial_coordinates=chapter_info.get("scene_location", "未设定"),
             chapter_summary=chapter_info.get("chapter_summary", ""),
             next_chapter_number=novel_number + 1,
             next_chapter_title=next_chapter_info.get("chapter_title", "（未命名）"),
@@ -100,7 +101,8 @@ def summarize_recent_chapters(
             next_chapter_foreshadowing=next_chapter_info.get("foreshadowing", "无特殊伏笔"),
             next_chapter_plot_twist_level=next_chapter_info.get("plot_twist_level", "★☆☆☆☆"),
             next_surface_cultivation=next_chapter_info.get("surface_cultivation", "未设定"),
-            next_actual_cultivation=next_chapter_info.get("actual_cultivation", "未设定")
+            next_actual_cultivation=next_chapter_info.get("actual_cultivation", "未设定"),
+            next_spatial_coordinates=next_chapter_info.get("scene_location", "未设定")
         )
         
         response_text = invoke_with_cleaning(llm_adapter, prompt)
@@ -265,7 +267,16 @@ def get_filtered_knowledge_context(
         )
 
         prompt = knowledge_filter_prompt.format(
-            chapter_info=formatted_chapter_info,
+            chapter_number=chapter_info.get('chapter_number', ''),
+            chapter_title=chapter_info.get('chapter_title', ''),
+            chapter_role=chapter_info.get('chapter_role', ''),
+            chapter_purpose=chapter_info.get('chapter_purpose', ''),
+            plot_type=chapter_info.get('chapter_purpose', ''),  # Using chapter_purpose as plot_type
+            tension_level=chapter_info.get('suspense_level', ''),
+            similarity_threshold="0.7",  # Default similarity threshold
+            value_density_requirement="中等",  # Default value density requirement
+            filter_primary_goal="获取与当前章节高度相关的内容",  # Default primary goal
+            filter_secondary_goals="补充背景信息、提供细节描述",  # Default secondary goals
             retrieved_texts="\n\n".join(formatted_texts) if formatted_texts else "（无检索结果）"
         )
         
@@ -463,15 +474,24 @@ def build_chapter_prompt(
         search_prompt = knowledge_search_prompt.format(
             chapter_number=novel_number,
             chapter_title=chapter_title,
-            characters_involved=characters_involved,
-            key_items=key_items,
-            scene_location=scene_location,
             chapter_role=chapter_role,
             chapter_purpose=chapter_purpose,
-            foreshadowing=foreshadowing,
-            short_summary=short_summary,
-            user_guidance=user_guidance,
-            time_constraint=time_constraint
+            plot_type=chapter_purpose,  # Using chapter_purpose as plot_type
+            tension_level=suspense_level,  # Using suspense_level as tension_level
+            plot_focus=chapter_role,  # Using chapter_role as plot_focus
+            foreshadowing_type=foreshadowing,
+            main_characters=characters_involved,
+            character_states="",  # Not available in current context
+            scene_location=scene_location,
+            scene_features="",  # Not available in current context
+            time_setting=time_constraint,
+            atmosphere="",  # Not available in current context
+            key_items=key_items,
+            related_technology="",  # Not available in current context
+            previous_summary="",  # Not available in current context
+            current_summary=short_summary,
+            future_expectations="",  # Not available in current context
+            user_guidance=user_guidance
         )
         
         search_response = invoke_with_cleaning(llm_adapter, search_prompt)
@@ -603,11 +623,30 @@ def generate_chapter_draft(
     interface_format: str = "openai",
     max_tokens: int = 2048,
     timeout: int = 600,
-    custom_prompt_text: str = None
+    custom_prompt_text: str = None,
+    log_func=None
 ) -> str:
     """
     生成章节草稿，支持自定义提示词
+    
+    参数:
+        log_func: 可选的日志函数，用于将日志输出到UI。如果为None，则使用logging模块。
     """
+    def log(message):
+        if log_func:
+            log_func(message)
+        else:
+            logging.info(message)
+
+    log("=" * 60)
+    log(f"📖 开始生成第{novel_number}章草稿...")
+    log(f"📂 小说路径: {filepath}")
+    log(f"📄 目标字数: {word_number}字")
+    log("=" * 60)
+
+    # 步骤1: 准备提示词
+    log("📋 步骤1/3: 准备提示词")
+
     if custom_prompt_text is None:
         prompt_text = build_chapter_prompt(
             api_key=api_key,
@@ -633,10 +672,13 @@ def generate_chapter_draft(
         )
     else:
         prompt_text = custom_prompt_text
+    log(f"✓ 提示词准备完成（共{len(prompt_text)}字）")
 
     chapters_dir = os.path.join(filepath, "chapters")
     os.makedirs(chapters_dir, exist_ok=True)
 
+    # 步骤2: 创建LLM适配器
+    log("📋 步骤2/3: 创建LLM适配器")
     llm_adapter = create_llm_adapter(
         interface_format=interface_format,
         base_url=base_url,
@@ -646,14 +688,24 @@ def generate_chapter_draft(
         max_tokens=max_tokens,
         timeout=timeout
     )
+    log("✓ LLM适配器创建成功")
 
+    # 步骤3: 生成章节内容
+    log("📋 步骤3/3: 生成章节内容")
+    log("📝 正在调用LLM生成章节内容...")
     chapter_content = invoke_with_cleaning(llm_adapter, prompt_text)
     if not chapter_content.strip():
-        logging.warning("Generated chapter draft is empty.")
+        log("⚠️ 章节内容为空，生成失败")
+        return chapter_content
+    log("✓ 章节内容生成成功")
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
+    log("💾 正在保存章节内容...")
     clear_file_content(chapter_file)
     save_string_to_txt(chapter_content, chapter_file)
+    log("✓ 章节内容保存成功")
     logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+
+    log(f"✅ 第{novel_number}章草稿生成完成")
 
 def generate_chapter_draft_stream(
     api_key: str,
@@ -677,7 +729,8 @@ def generate_chapter_draft_stream(
     max_tokens: int = 2048,
     timeout: int = 600,
     custom_prompt_text: str = None,
-    stream_callback: callable = None
+    stream_callback: callable = None,
+    log_func=None
 ) -> str:
     """
     生成章节草稿，支持流式输出
@@ -688,6 +741,20 @@ def generate_chapter_draft_stream(
     返回:
         完整的章节内容
     """
+    def log(message):
+        if log_func:
+            log_func(message)
+        else:
+            logging.info(message)
+    
+    log("=" * 60)
+    log(f"📖 开始生成第{novel_number}章草稿...")
+    log(f"📂 小说路径: {filepath}")
+    log(f"📄 目标字数: {word_number}字")
+    log("=" * 60)
+    
+    # 步骤1: 准备提示词
+    log("📋 步骤1/4: 准备提示词")
     if custom_prompt_text is None:
         prompt_text = build_chapter_prompt(
             api_key=api_key,
@@ -713,10 +780,13 @@ def generate_chapter_draft_stream(
         )
     else:
         prompt_text = custom_prompt_text
+    log(f"✓ 提示词准备完成（共{len(prompt_text)}字）")
 
     chapters_dir = os.path.join(filepath, "chapters")
     os.makedirs(chapters_dir, exist_ok=True)
 
+    # 步骤2: 创建LLM适配器
+    log("📋 步骤2/4: 创建LLM适配器")
     llm_adapter = create_llm_adapter(
         interface_format=interface_format,
         base_url=base_url,
@@ -726,13 +796,31 @@ def generate_chapter_draft_stream(
         max_tokens=max_tokens,
         timeout=timeout
     )
+    log("✓ LLM适配器创建成功")
 
+    # 步骤3: 生成章节内容
+    log("📋 步骤3/4: 生成章节内容")
+    log("📝 正在生成章节内容（流式输出）...")
     # 使用流式输出
     from novel_generator.stream_utils import invoke_with_cleaning_stream
     chapter_content = invoke_with_cleaning_stream(llm_adapter, prompt_text, stream_callback)
     
     if not chapter_content.strip():
-        logging.warning("Generated chapter draft is empty.")
+        log("⚠️ 章节内容为空，生成失败")
+        return chapter_content
+    log("✓ 章节内容生成成功")
+
+    # 步骤4: 保存章节内容
+    log("📋 步骤4/4: 保存章节内容")
+    chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
+    log("💾 正在保存章节内容...")
+    clear_file_content(chapter_file)
+    save_string_to_txt(chapter_content, chapter_file)
+    log("✓ 章节内容保存成功")
+    logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+    
+    log(f"✅ 第{novel_number}章草稿生成完成")
+
     
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
     clear_file_content(chapter_file)

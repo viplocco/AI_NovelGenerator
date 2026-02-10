@@ -26,70 +26,148 @@ def finalize_chapter(
     embedding_model_name: str,
     interface_format: str,
     max_tokens: int,
-    timeout: int = 600
+    timeout: int = 600,
+    log_func=None
 ):
     """
     对指定章节做最终处理：更新前文摘要、更新角色状态、插入向量库等。
     默认无需再做扩写操作，若有需要可在外部调用 enrich_chapter_text 处理后再定稿。
+    
+    参数:
+        log_func: 可选的日志函数，用于将日志输出到UI。如果为None，则使用logging模块。
     """
-    logging.info(f"📖 开始定稿第{novel_number}章...")
+    def log(message):
+        if log_func:
+            log_func(message)
+        else:
+            logging.info(message)
+    
+    log("=" * 60)
+    log(f"📖 开始定稿第{novel_number}章...")
+    log(f"📂 小说路径: {filepath}")
+    log(f"📄 目标字数: {word_number}字")
+    log("=" * 60)
+    
+    # 步骤1: 读取章节内容
+    log("📋 步骤1/7: 读取章节内容")
     chapters_dir = os.path.join(filepath, "chapters")
     chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
-    chapter_text = read_file(chapter_file).strip()
-    if not chapter_text:
-        logging.warning(f"⚠️ 第{novel_number}章内容为空，无法定稿")
+    log(f"📄 章节文件: {chapter_file}")
+    
+    try:
+        chapter_text = read_file(chapter_file).strip()
+        if not chapter_text:
+            log(f"⚠️ 第{novel_number}章内容为空，无法定稿")
+            return
+        log(f"✓ 已读取第{novel_number}章内容（共{len(chapter_text)}字）")
+    except Exception as e:
+        log(f"❌ 读取章节文件失败: {e}")
         return
-    logging.info(f"✓ 已读取第{novel_number}章内容（共{len(chapter_text)}字）")
 
+    # 步骤2: 读取现有摘要和角色状态
+    log("📋 步骤2/7: 读取现有摘要和角色状态")
     global_summary_file = os.path.join(filepath, "global_summary.txt")
+    log(f"📄 摘要文件: {global_summary_file}")
     old_global_summary = read_file(global_summary_file)
+    log(f"✓ 原摘要长度: {len(old_global_summary)}字")
+    
     character_state_file = os.path.join(filepath, "character_state.txt")
+    log(f"📄 角色状态文件: {character_state_file}")
     old_character_state = read_file(character_state_file)
+    log(f"✓ 原角色状态长度: {len(old_character_state)}字")
 
-    llm_adapter = create_llm_adapter(
-        interface_format=interface_format,
-        base_url=base_url,
-        model_name=model_name,
-        api_key=api_key,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout=timeout
-    )
+    # 步骤3: 创建LLM适配器
+    log("📋 步骤3/7: 创建LLM适配器")
+    try:
+        llm_adapter = create_llm_adapter(
+            interface_format=interface_format,
+            base_url=base_url,
+            model_name=model_name,
+            api_key=api_key,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout
+        )
+        log("✓ LLM适配器创建成功")
+    except Exception as e:
+        log(f"❌ LLM适配器创建失败: {e}")
+        return
 
-    logging.info("📝 正在更新前文摘要...")
-    prompt_summary = summary_prompt.format(
-        chapter_text=chapter_text,
-        global_summary=old_global_summary
-    )
-    new_global_summary = invoke_with_cleaning(llm_adapter, prompt_summary)
-    if not new_global_summary.strip():
+    # 步骤4: 更新前文摘要
+    log("📋 步骤4/7: 更新前文摘要")
+    log("📝 正在生成新的前文摘要...")
+    try:
+        prompt_summary = summary_prompt.format(
+            chapter_text=chapter_text,
+            global_summary=old_global_summary
+        )
+        log(f"📝 摘要提示词长度: {len(prompt_summary)}字")
+        new_global_summary = invoke_with_cleaning(llm_adapter, prompt_summary)
+        if not new_global_summary.strip():
+            new_global_summary = old_global_summary
+            log("⚠️ 前文摘要生成失败，保留原摘要")
+        else:
+            log(f"✓ 新前文摘要生成成功（共{len(new_global_summary)}字）")
+            log(f"📊 摘要变化: {len(new_global_summary) - len(old_global_summary):+d}字")
+    except Exception as e:
+        log(f"❌ 更新前文摘要时出错: {e}")
         new_global_summary = old_global_summary
-        logging.warning("⚠️ 前文摘要生成失败，保留原摘要")
-    logging.info(f"✓ 前文摘要已更新（共{len(new_global_summary)}字）")
+        log("⚠️ 使用原摘要继续流程")
 
-    logging.info("👤 正在更新角色状态...")
-    prompt_char_state = update_character_state_prompt.format(
-        chapter_text=chapter_text,
-        old_state=old_character_state
-    )
-    new_char_state = invoke_with_cleaning(llm_adapter, prompt_char_state)
-    if not new_char_state.strip():
+    # 步骤5: 更新角色状态
+    log("📋 步骤5/7: 更新角色状态")
+    log("👤 正在更新角色状态...")
+    try:
+        prompt_char_state = update_character_state_prompt.format(
+            chapter_text=chapter_text,
+            old_state=old_character_state
+        )
+        log(f"📝 角色状态提示词长度: {len(prompt_char_state)}字")
+        new_char_state = invoke_with_cleaning(llm_adapter, prompt_char_state)
+        if not new_char_state.strip():
+            new_char_state = old_character_state
+            log("⚠️ 角色状态更新失败，保留原状态")
+        else:
+            log(f"✓ 新角色状态生成成功（共{len(new_char_state)}字）")
+            log(f"📊 角色状态变化: {len(new_char_state) - len(old_character_state):+d}字")
+            # 统计角色数量
+            role_count = new_char_state.count("：")
+            log(f"👥 当前记录角色数量: {role_count}个")
+    except Exception as e:
+        log(f"❌ 更新角色状态时出错: {e}")
         new_char_state = old_character_state
-        logging.warning("⚠️ 角色状态更新失败，保留原状态")
-    logging.info(f"✓ 角色状态已更新（共{len(new_char_state)}字）")
+        log("⚠️ 使用原角色状态继续流程")
 
-    # 更新剧情要点
+    # 步骤6: 更新剧情要点和未解决冲突
+    log("📋 步骤6/7: 更新剧情要点和未解决冲突")
+    log("📊 正在更新剧情要点和未解决冲突记录...")
     plot_arcs_file = os.path.join(filepath, "plot_arcs.txt")
+    log(f"📄 剧情要点文件: {plot_arcs_file}")
     old_plot_arcs = ""
     if os.path.exists(plot_arcs_file):
         old_plot_arcs = read_file(plot_arcs_file)
-    prompt_plot_arcs = update_plot_arcs_prompt.format(
-        chapter_text=chapter_text,
-        old_plot_arcs=old_plot_arcs
-    )
-    new_plot_arcs = invoke_with_cleaning(llm_adapter, prompt_plot_arcs)
-    if not new_plot_arcs.strip():
+        log(f"✓ 原剧情要点长度: {len(old_plot_arcs)}字")
+    try:
+        prompt_plot_arcs = update_plot_arcs_prompt.format(
+            chapter_text=chapter_text,
+            old_plot_arcs=old_plot_arcs
+        )
+        log(f"📝 剧情要点提示词长度: {len(prompt_plot_arcs)}字")
+        new_plot_arcs = invoke_with_cleaning(llm_adapter, prompt_plot_arcs)
+        if not new_plot_arcs.strip():
+            new_plot_arcs = old_plot_arcs
+            log("⚠️ 剧情要点和未解决冲突更新失败，保留原记录")
+        else:
+            log(f"✓ 新剧情要点生成成功（共{len(new_plot_arcs)}字）")
+            log(f"📊 剧情要点变化: {len(new_plot_arcs) - len(old_plot_arcs):+d}字")
+    except Exception as e:
+        log(f"❌ 更新剧情要点时出错: {e}")
         new_plot_arcs = old_plot_arcs
+        log("⚠️ 使用原剧情要点继续流程")
+
+    # 统计未解决冲突数量
+    unresolved_conflicts = new_plot_arcs.count("未解决")
+    log(f"✓ 剧情要点已更新（共{len(new_plot_arcs)}字，包含{unresolved_conflicts}个未解决冲突）")
 
     clear_file_content(global_summary_file)
     save_string_to_txt(new_global_summary, global_summary_file)
@@ -99,22 +177,35 @@ def finalize_chapter(
     save_string_to_txt(new_plot_arcs, plot_arcs_file)
     
     # 同步角色库
-    _sync_character_library(filepath, new_char_state)
+    log("👥 正在同步角色库...")
+    try:
+        _sync_character_library(filepath, new_char_state)
+        log("✓ 角色库同步完成")
+    except Exception as e:
+        log(f"❌ 同步角色库时出错: {e}")
+        log("⚠️ 角色库同步失败，但继续流程")
 
-    logging.info("🔍 正在更新向量库...")
-    update_vector_store(
-        embedding_adapter=create_embedding_adapter(
-            embedding_interface_format,
-            embedding_api_key,
-            embedding_url,
-            embedding_model_name
-        ),
-        new_chapter=chapter_text,
-        filepath=filepath
-    )
-    logging.info("✓ 向量库更新完成")
-
-    logging.info(f"✅ 第{novel_number}章定稿完成！")
+    # 步骤7: 更新向量库
+    log("📋 步骤7/7: 更新向量库")
+    log("🔍 正在更新向量库...")
+    try:
+        updated_count = update_vector_store(
+            embedding_adapter=create_embedding_adapter(
+                embedding_interface_format,
+                embedding_api_key,
+                embedding_url,
+                embedding_model_name
+            ),
+            new_chapter=chapter_text,
+            filepath=filepath
+        )
+        if updated_count > 0:
+            log(f"✓ 向量库更新成功，本次更新{updated_count}条数据")
+        else:
+            log("⚠️ 向量库更新失败或无数据更新")
+    except Exception as e:
+        log(f"❌ 更新向量库时出错: {e}")
+        log("⚠️ 向量库更新失败，但继续流程")
 
 def enrich_chapter_text(
     chapter_text: str,

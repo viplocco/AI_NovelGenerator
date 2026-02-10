@@ -18,7 +18,8 @@ def build_chapters_tab(self):
     top_frame.columnconfigure(1, weight=0)
     top_frame.columnconfigure(2, weight=0)
     top_frame.columnconfigure(3, weight=0)
-    top_frame.columnconfigure(4, weight=1)
+    top_frame.columnconfigure(4, weight=0)
+    top_frame.columnconfigure(5, weight=1)
 
     prev_btn = ctk.CTkButton(top_frame, text="<< 上一章", command=self.prev_chapter, font=("Microsoft YaHei", 12))
     prev_btn.grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -34,10 +35,13 @@ def build_chapters_tab(self):
     save_btn.grid(row=0, column=3, padx=5, pady=5, sticky="w")
 
     refresh_btn = ctk.CTkButton(top_frame, text="刷新列表", command=self.refresh_chapters_list, font=("Microsoft YaHei", 12))
-    refresh_btn.grid(row=0, column=5, padx=5, pady=5, sticky="e")
+    refresh_btn.grid(row=0, column=6, padx=5, pady=5, sticky="e")
+
+    self.chapters_status_label = ctk.CTkLabel(top_frame, text="状态：未定稿", font=("Microsoft YaHei", 12))
+    self.chapters_status_label.grid(row=0, column=4, padx=(0,10), sticky="e")
 
     self.chapters_word_count_label = ctk.CTkLabel(top_frame, text="字数：0", font=("Microsoft YaHei", 12))
-    self.chapters_word_count_label.grid(row=0, column=4, padx=(0,10), sticky="e")
+    self.chapters_word_count_label.grid(row=0, column=5, padx=(0,10), sticky="e")
 
     self.chapter_view_text = ctk.CTkTextbox(self.chapters_view_tab, wrap="word", font=("Microsoft YaHei", 12))
     
@@ -77,15 +81,33 @@ def refresh_chapters_list(self):
         if self.chapters_list:
             self.chapter_select_var.set(self.chapters_list[0])
             load_chapter_content(self, self.chapters_list[0])
+            # 确保状态标签已更新
+            filepath = self.filepath_var.get().strip()
+            finalized_file = os.path.join(filepath, "chapters", f"chapter_{self.chapters_list[0]}_finalized.txt")
+            if os.path.exists(finalized_file):
+                self.chapters_status_label.configure(text="状态：已定稿")
+            else:
+                self.chapters_status_label.configure(text="状态：未定稿")
         else:
             self.chapter_select_var.set("")
             self.chapter_view_text.delete("0.0", "end")
+            self.chapters_status_label.configure(text="状态：无章节")
+    else:
+        # 当前选择的章节仍在列表中，更新状态标签
+        if current_selected:
+            filepath = self.filepath_var.get().strip()
+            finalized_file = os.path.join(filepath, "chapters", f"chapter_{current_selected}_finalized.txt")
+            if os.path.exists(finalized_file):
+                self.chapters_status_label.configure(text="状态：已定稿")
+            else:
+                self.chapters_status_label.configure(text="状态：未定稿")
     # 更新按钮状态
     if hasattr(self, 'update_step_buttons_state'):
         self.update_step_buttons_state()
 
 def on_chapter_selected(self, value):
     load_chapter_content(self, value)
+    # 状态标签已在load_chapter_content中更新
     # 更新按钮状态
     if hasattr(self, 'update_step_buttons_state'):
         self.update_step_buttons_state()
@@ -101,6 +123,13 @@ def load_chapter_content(self, chapter_number_str):
     content = read_file(chapter_file)
     self.chapter_view_text.delete("0.0", "end")
     self.chapter_view_text.insert("0.0", content)
+    
+    # 更新章节状态
+    finalized_file = os.path.join(filepath, "chapters", f"chapter_{chapter_number_str}_finalized.txt")
+    if os.path.exists(finalized_file):
+        self.chapters_status_label.configure(text="状态：已定稿")
+    else:
+        self.chapters_status_label.configure(text="状态：未定稿")
 
 def save_current_chapter(self):
     chapter_number_str = self.chapter_select_var.get()
@@ -116,6 +145,16 @@ def save_current_chapter(self):
     clear_file_content(chapter_file)
     save_string_to_txt(content, chapter_file)
     self.safe_log(f"已保存对第 {chapter_number_str} 章的修改。")
+    
+    # 更新章节状态
+    finalized_file = os.path.join(filepath, "chapters", f"chapter_{chapter_number_str}_finalized.txt")
+    if os.path.exists(finalized_file):
+        # 如果章节已定稿，保存修改后删除定稿标记文件
+        os.remove(finalized_file)
+        self.chapters_status_label.configure(text="状态：未定稿")
+        self.safe_log(f"第 {chapter_number_str} 章已修改，状态更新为未定稿。")
+    else:
+        self.chapters_status_label.configure(text="状态：未定稿")
 
 def prev_chapter(self):
     if not self.chapters_list:
@@ -128,6 +167,9 @@ def prev_chapter(self):
         new_idx = idx - 1
         self.chapter_select_var.set(self.chapters_list[new_idx])
         load_chapter_content(self, self.chapters_list[new_idx])
+        # 更新按钮状态
+        if hasattr(self, 'update_step_buttons_state'):
+            self.update_step_buttons_state()
     else:
         messagebox.showinfo("提示", "已经是第一章了。")
 
@@ -142,5 +184,8 @@ def next_chapter(self):
         new_idx = idx + 1
         self.chapter_select_var.set(self.chapters_list[new_idx])
         load_chapter_content(self, self.chapters_list[new_idx])
+        # 更新按钮状态
+        if hasattr(self, 'update_step_buttons_state'):
+            self.update_step_buttons_state()
     else:
         messagebox.showinfo("提示", "已经是最后一章了。")

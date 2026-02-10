@@ -436,7 +436,6 @@ def generate_chapter_draft_ui(self):
                 self.safe_log("❌ 用户取消了草稿生成请求。")
                 return
 
-            self.safe_log("开始生成章节草稿...")
             
             # 清空章节文本框
             self.master.after(0, lambda: self.chapter_result.delete("0.0", "end"))
@@ -479,14 +478,14 @@ def generate_chapter_draft_ui(self):
                 max_tokens=max_tokens,
                 timeout=timeout_val,
                 custom_prompt_text=edited_prompt,  # 使用用户编辑后的提示词
-                stream_callback=stream_callback  # 流式输出回调函数
+                stream_callback=stream_callback,  # 流式输出回调函数
+                log_func=self.safe_log  # 日志输出函数
             )
             
             # 恢复编辑功能
             self.master.after(0, lambda: self.set_chapter_editable(True))
             
             if draft_text:
-                self.safe_log(f"✅ 第{chap_num}章草稿生成完成。请在左侧查看或编辑。")
                 # 更新按钮状态
                 self.update_step_buttons_state()
             else:
@@ -569,8 +568,14 @@ def finalize_chapter_ui(self):
                 embedding_model_name=embedding_model_name,
                 interface_format=interface_format,
                 max_tokens=max_tokens,
-                timeout=timeout_val
+                timeout=timeout_val,
+                log_func=self.safe_log
             )
+
+            # 创建定稿标记文件，并写入定稿后的章节内容
+            finalized_file = os.path.join(chapters_dir, f"chapter_{chap_num}_finalized.txt")
+            save_string_to_txt(edited_text, finalized_file)
+
             self.safe_log(f"✅ 第{chap_num}章定稿完成（已更新前文摘要、角色状态、向量库）。")
             
             # 在主线程中更新UI

@@ -24,6 +24,191 @@ from novel_generator.vectorstore_utils import (
     load_vector_store  # 添加导入
 )
 
+# ============== 角色状态智能筛选功能 ==============
+
+def get_relevant_character_state(filepath: str, characters_involved: str, current_chapter: int) -> str:
+    """
+    根据章节涉及角色，智能提取相关角色状态
+    
+    参数:
+        filepath: 小说保存路径
+        characters_involved: 章节目录中指定的核心人物（逗号分隔）
+        current_chapter: 当前章节号
+    
+    返回:
+        筛选后的角色状态文本
+    """
+    character_state_file = os.path.join(filepath, "character_state.txt")
+    
+    if not os.path.exists(character_state_file):
+        return "（无角色状态）"
+    
+    full_state = read_file(character_state_file)
+    
+    # 如果角色状态较短（<8000字），直接返回全部
+    if len(full_state) < 8000:
+        return full_state
+    
+    # 如果未指定角色，使用索引提取活跃角色
+    if not characters_involved or characters_involved.strip() in ["", "未指定", "无"]:
+        return _extract_active_characters(full_state, filepath, current_chapter)
+    
+    # 解析指定角色列表（支持中英文逗号）
+    specified_chars = []
+    for c in characters_involved.replace('，', ',').split(','):
+        char_name = c.strip()
+        if char_name and char_name not in specified_chars:
+            specified_chars.append(char_name)
+    
+    # 尝试提取指定角色的状态
+    relevant_state = _extract_character_blocks(full_state, specified_chars)
+    
+    # 如果提取结果太短（<500字），可能匹配失败，返回活跃角色
+    if len(relevant_state) < 500:
+        return _extract_active_characters(full_state, filepath, current_chapter)
+    
+    # 在提取结果末尾添加"新出场角色"部分（如果原状态中有）
+    new_chars_section = _extract_new_characters_section(full_state)
+    if new_chars_section and new_chars_section not in relevant_state:
+        relevant_state += "\n\n" + new_chars_section
+    
+    return relevant_state
+
+
+def _extract_character_blocks(full_state: str, char_names: list) -> str:
+    """
+    从完整状态中提取指定角色的状态块
+    
+    参数:
+        full_state: 完整的角色状态文本
+        char_names: 需要提取的角色名列表
+    
+    返回:
+        提取的角色状态文本
+    """
+    blocks = []
+    current_block = []
+    capturing = False
+    current_char = None
+    
+    lines = full_state.split('\n')
+    
+    for i, line in enumerate(lines):
+        # 检测角色名行（角色名开头 + 冒号，且不是属性行）
+        is_char_header = False
+        stripped_line = line.strip()
+        
+        # 跳过属性行和子属性行
+        if stripped_line.startswith('├') or stripped_line.startswith('│') or stripped_line.startswith('└'):
+            if capturing:
+                current_block.append(line)
+            continue
+        
+        # 检查是否是角色标题行
+        for name in char_names:
+            if stripped_line == f"{name}：" or stripped_line == f"{name}:" or stripped_line.startswith(f"{name}：") or stripped_line.startswith(f"{name}:"):
+                is_char_header = True
+                # 保存之前的块
+                if capturing and current_block:
+                    blocks.append('\n'.join(current_block))
+                current_block = [line]
+                current_char = name
+                capturing = True
+                break
+        
+        if not is_char_header:
+            if capturing:
+                # 检查是否是另一个角色的开始（非属性行且包含冒号）
+                if stripped_line and '：' in stripped_line or ':' in stripped_line:
+                    # 检查是否是新角色
+                    possible_name = stripped_line.split('：')[0].split(':')[0].strip()
+                    if possible_name and not possible_name.startswith('├') and not possible_name.startswith('│'):
+                        # 这可能是新角色的开始
+                        if possible_name not in char_names:
+                            # 结束当前捕获
+                            blocks.append('\n'.join(current_block))
+                            capturing = False
+                            current_block = []
+                            continue
+                
+                current_block.append(line)
+    
+    # 保存最后一个块
+    if capturing and current_block:
+        blocks.append('\n'.join(current_block))
+    
+    return '\n\n'.join(blocks)
+
+
+def _extract_active_characters(full_state: str, filepath: str, current_chapter: int) -> str:
+    """
+    提取活跃角色状态（用于状态文件过大时）
+    活跃定义：最近30章内出现过的角色
+    
+    参数:
+        full_state: 完整的角色状态文本
+        filepath: 小说保存路径
+        current_chapter: 当前章节号
+    
+    返回:
+        活跃角色的状态文本
+    """
+    index_file = os.path.join(filepath, "character_index.json")
+    
+    # 如果没有索引文件，返回状态文本的后3000字（假设最近更新的角色更相关）
+    if not os.path.exists(index_file):
+        return full_state[-3000:] if len(full_state) > 3000 else full_state
+    
+    try:
+        with open(index_file, 'r', encoding='utf-8') as f:
+            index = json.load(f)
+        
+        # 获取活跃角色名（最近30章内出现过）
+        active_threshold = 30
+        active_chars = []
+        for name, info in index.items():
+            last_chapter = info.get('last_chapter', 0)
+            if current_chapter - last_chapter <= active_threshold:
+                active_chars.append(name)
+        
+        if not active_chars:
+            # 没有活跃角色，返回全部
+            return full_state
+        
+        # 提取活跃角色状态
+        result = _extract_character_blocks(full_state, active_chars)
+        
+        # 添加新出场角色部分
+        new_chars_section = _extract_new_characters_section(full_state)
+        if new_chars_section and new_chars_section not in result:
+            result += "\n\n" + new_chars_section
+        
+        return result
+        
+    except Exception as e:
+        logging.warning(f"读取角色索引失败: {e}，使用截取方式")
+        return full_state[-3000:] if len(full_state) > 3000 else full_state
+
+
+def _extract_new_characters_section(full_state: str) -> str:
+    """
+    提取"新出场角色"部分
+    
+    参数:
+        full_state: 完整的角色状态文本
+    
+    返回:
+        新出场角色部分文本，如果没有则返回空字符串
+    """
+    markers = ["新出场角色：", "新出场角色:", "新角色：", "新角色:"]
+    
+    for marker in markers:
+        if marker in full_state:
+            idx = full_state.find(marker)
+            return full_state[idx:].strip()
+    
+    return ""
+
 def get_last_n_chapters_text(chapters_dir: str, current_chapter_num: int, n: int = 3) -> list:
     """
     从目录 chapters_dir 中获取最近 n 章的文本内容，返回文本列表。
@@ -343,8 +528,13 @@ def build_chapter_prompt(
             pass
     global_summary_file = os.path.join(filepath, "global_summary.txt")
     global_summary_text = read_file(global_summary_file)
-    character_state_file = os.path.join(filepath, "character_state.txt")
-    character_state_text = read_file(character_state_file)
+    
+    # 使用智能角色筛选功能，只获取相关角色状态
+    # 获取章节信息中的角色信息
+    temp_chapter_info = get_chapter_info_from_blueprint(blueprint_text if 'blueprint_text' in dir() else read_file(directory_file), novel_number)
+    temp_characters = temp_chapter_info.get("characters_involved", characters_involved) if temp_chapter_info else characters_involved
+    character_state_text = get_relevant_character_state(filepath, temp_characters, novel_number)
+    
     plot_arcs_file = os.path.join(filepath, "plot_arcs.txt")
     plot_arcs_text = ""
     if os.path.exists(plot_arcs_file):

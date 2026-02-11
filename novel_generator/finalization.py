@@ -4,7 +4,9 @@
 定稿章节和扩写章节（finalize_chapter、enrich_chapter_text）
 """
 import os
+import json
 import logging
+import re
 from llm_adapters import create_llm_adapter
 from embedding_adapters import create_embedding_adapter
 from prompt_definitions import summary_prompt, update_character_state_prompt, update_plot_arcs_prompt
@@ -213,6 +215,15 @@ def finalize_chapter(
         log(f"❌ 同步角色库时出错: {e}")
         log("⚠️ 角色库同步失败，但继续流程")
 
+    # 更新角色索引（用于智能筛选）
+    log("📇 正在更新角色索引...")
+    try:
+        _update_character_index(filepath, novel_number, chapter_text, new_char_state)
+        log("✓ 角色索引更新完成")
+    except Exception as e:
+        log(f"❌ 更新角色索引时出错: {e}")
+        log("⚠️ 角色索引更新失败，但继续流程")
+
     # 步骤7: 更新向量库
     log("📋 步骤7/7: 更新向量库")
     log("🔍 正在更新向量库...")
@@ -374,3 +385,76 @@ def _parse_character_state(character_state: str) -> dict:
                         characters[current_char][current_attr].append(content)
     
     return characters
+
+
+def _update_character_index(filepath: str, chapter_num: int, chapter_text: str, character_state: str):
+    """
+    更新角色出场索引
+    
+    索引结构:
+    {
+        "角色名": {
+            "first_appear": 1,           # 首次出场章节
+            "last_chapter": 156,         # 最后出场章节
+            "recent_chapters": [150, 151, 155, 156],  # 最近出场的章节列表
+            "is_active": true            # 是否活跃（最近30章内出场）
+        }
+    }
+    """
+    index_file = os.path.join(filepath, "character_index.json")
+    
+    # 加载现有索引
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, 'r', encoding='utf-8') as f:
+                index = json.load(f)
+        except Exception as e:
+            logging.warning(f"读取角色索引失败，将创建新索引: {e}")
+            index = {}
+    else:
+        index = {}
+    
+    # 从角色状态中解析当前章节涉及的角色名
+    current_chars = set()
+    for line in character_state.split('\n'):
+        stripped = line.strip()
+        # 跳过属性行和空行
+        if not stripped or stripped.startswith('├') or stripped.startswith('│') or stripped.startswith('└'):
+            continue
+        # 检测角色名行（角色名 + 冒号）
+        if '：' in stripped or ':' in stripped:
+            char_name = stripped.split('：')[0].split(':')[0].strip()
+            if char_name and not char_name.startswith('新'):  # 排除"新出场角色"等标题
+                current_chars.add(char_name)
+    
+    # 更新索引
+    for char_name in current_chars:
+        if char_name not in index:
+            index[char_name] = {
+                "first_appear": chapter_num,
+                "last_chapter": chapter_num,
+                "recent_chapters": [chapter_num],
+                "is_active": True
+            }
+        else:
+            # 更新最后出场章节
+            index[char_name]["last_chapter"] = chapter_num
+            
+            # 更新最近出场章节列表
+            recent = index[char_name].get("recent_chapters", [])
+            if chapter_num not in recent:
+                recent.append(chapter_num)
+            # 只保留最近20章
+            index[char_name]["recent_chapters"] = recent[-20:]
+    
+    # 更新所有角色的活跃状态（最近30章内出现过的为活跃）
+    active_threshold = 30
+    for char_name in index:
+        last = index[char_name].get("last_chapter", 0)
+        index[char_name]["is_active"] = (chapter_num - last) <= active_threshold
+    
+    # 保存索引
+    with open(index_file, 'w', encoding='utf-8') as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+    
+    logging.info(f"角色索引已更新，当前共{len(index)}个角色，活跃角色{sum(1 for v in index.values() if v.get('is_active', True))}个")

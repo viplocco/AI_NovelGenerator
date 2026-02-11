@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import re  # 添加re模块导入
+import time  # 添加time模块导入
 from llm_adapters import create_llm_adapter
 from prompt_definitions import (
     first_chapter_draft_prompt, 
@@ -307,7 +308,9 @@ def build_chapter_prompt(
     embedding_retrieval_k: int = 2,
     interface_format: str = "openai",
     max_tokens: int = 2048,
-    timeout: int = 600
+    timeout: int = 600,
+    prompt_callback: callable = None,
+    progress_callback: callable = None
 ) -> str:
     """
     构造当前章节的请求提示词（完整实现版）
@@ -315,8 +318,15 @@ def build_chapter_prompt(
     1. 优化知识库检索流程
     2. 新增内容重复检测机制
     3. 集成提示词应用规则
+
+    参数:
+        prompt_callback: 提示词构建进度回调函数，接收文本参数
+        progress_callback: 进度更新回调函数，接收(progress, description)参数
     """
     # 读取基础文件
+    if progress_callback:
+        progress_callback(0.1, "读取基础文件")
+
     arch_file = os.path.join(filepath, "Novel_architecture.txt")
     novel_architecture_text = read_file(arch_file)
     directory_file = os.path.join(filepath, "Novel_directory.txt")
@@ -344,8 +354,8 @@ def build_chapter_prompt(
     if not blueprint_text or not blueprint_text.strip():
         print(f"错误: 章节目录为空，无法获取章节 {novel_number} 的信息")
         print(f"提示: 请先生成章节目录（步骤2）")
-        # 返回一个基本的提示词，不包含章节信息
-        return next_chapter_draft_prompt.format(
+        # 构建默认提示词
+        default_prompt = next_chapter_draft_prompt.format(
             user_guidance=user_guidance if user_guidance else "无特殊指导",
             global_summary=global_summary_text if global_summary_text else "（无全局摘要）",
             previous_chapter_excerpt="（无前文）",
@@ -374,8 +384,18 @@ def build_chapter_prompt(
             next_chapter_summary="未设定",
             filtered_context="（无知识库内容）"
         )
+        # 调用回调函数显示提示词内容
+        if prompt_callback:
+            prompt_callback(f"\n[完整提示词]\n{default_prompt}")
+        if progress_callback:
+            progress_callback(1.0, "章节目录为空，使用默认提示词")
+        return default_prompt
 
     chapter_info = get_chapter_info_from_blueprint(blueprint_text, novel_number)
+
+    if progress_callback:
+        progress_callback(0.2, "获取章节信息")
+
     chapter_title = chapter_info.get("chapter_title", f"第{novel_number}章")
     chapter_role = chapter_info.get("chapter_role", "未设定")
     chapter_purpose = chapter_info.get("chapter_purpose", "未设定")
@@ -407,7 +427,7 @@ def build_chapter_prompt(
 
     # 第一章特殊处理
     if novel_number == 1:
-        return first_chapter_draft_prompt.format(
+        first_prompt = first_chapter_draft_prompt.format(
             novel_number=novel_number,
             word_number=word_number,
             chapter_title=chapter_title,
@@ -427,11 +447,23 @@ def build_chapter_prompt(
             user_guidance=user_guidance,
             novel_setting=novel_architecture_text
         )
+        # 调用回调函数显示提示词内容
+        if prompt_callback:
+            prompt_callback(f"\n[完整提示词]\n{first_prompt}")
+        if progress_callback:
+            progress_callback(1.0, "提示词构建完成")
+        return first_prompt
 
     # 获取前文内容和摘要
+    if progress_callback:
+        progress_callback(0.3, "准备生成章节摘要")
+
     recent_texts = get_last_n_chapters_text(chapters_dir, novel_number, n=3)
     
     try:
+        if progress_callback:
+            progress_callback(0.4, "正在生成章节摘要")
+
         logging.info("Attempting to generate summary")
         short_summary = summarize_recent_chapters(
             interface_format=interface_format,
@@ -447,6 +479,12 @@ def build_chapter_prompt(
             timeout=timeout
         )
         logging.info("Summary generated successfully")
+
+        if prompt_callback:
+            prompt_callback(f"\n[章节摘要]\n{short_summary}")
+
+        # 添加延时，让用户能看到进度变化
+        time.sleep(1)
     except Exception as e:
         logging.error(f"Error in summarize_recent_chapters: {str(e)}")
         short_summary = "（摘要生成失败）"
@@ -459,8 +497,13 @@ def build_chapter_prompt(
             break
 
     # 知识库检索和处理
+    if progress_callback:
+        progress_callback(0.5, "生成知识库检索提示词")
+
     try:
         # 生成检索关键词
+        if progress_callback:
+            progress_callback(0.6, "检索知识库")
         llm_adapter = create_llm_adapter(
             interface_format=interface_format,
             base_url=base_url,
@@ -565,8 +608,20 @@ def build_chapter_prompt(
         logging.error(f"知识处理流程异常：{str(e)}")
         filtered_context = "（知识库处理失败）"
 
+    if prompt_callback:
+        prompt_callback(f"\n[知识库内容]\n{filtered_context}")
+
+    # 添加延时，让用户能看到进度变化
+    time.sleep(1)
+
     # 返回最终提示词
-    return next_chapter_draft_prompt.format(
+    if progress_callback:
+        progress_callback(0.85, "构建完整提示词")
+
+    # 添加延时，让用户能看到进度变化
+    time.sleep(1)
+
+    final_prompt = next_chapter_draft_prompt.format(
         user_guidance=user_guidance if user_guidance else "无特殊指导",
         global_summary=global_summary_text,
         previous_chapter_excerpt=previous_excerpt,
@@ -601,6 +656,17 @@ def build_chapter_prompt(
         next_chapter_summary=next_chapter_summary,
         filtered_context=filtered_context
     )
+
+    if prompt_callback:
+        prompt_callback(f"\n[完整提示词]\n{final_prompt}")
+
+    if progress_callback:
+        progress_callback(1.0, "提示词构建完成")
+
+    # 添加延时，让用户能看到最终状态
+    time.sleep(1)
+
+    return final_prompt
 
 def generate_chapter_draft(
     api_key: str,

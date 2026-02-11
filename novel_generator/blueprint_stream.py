@@ -12,6 +12,49 @@ from llm_adapters import create_llm_adapter
 from prompt_definitions import chunked_chapter_blueprint_prompt
 from utils import read_file, clear_file_content, save_string_to_txt
 
+
+def extract_cluster_headers(blueprint_text: str) -> list:
+    """
+    提取章节目录中的集群标题和元数据块
+    
+    支持的格式示例：
+    ## 第一集群：幸存者之誓（第1-5章）
+    **修为范围：** 炼气一层 → 炼气一层稳固  
+    **空间范围：** 西山村废墟 → 后山坟地 → 山林逃亡
+    
+    或：
+    # 第十二集群：罪民后裔（第96-100章）
+    **修为范围：** 炼气八层门槛 → 炼气八层  
+    **空间范围：** 绿洲遗迹 → 地下洞穴 → 部落聚居地
+    
+    返回: [(起始章节号, 集群标题完整内容), ...]
+    """
+    cluster_headers = []
+    
+    # 更灵活的匹配模式：
+    # 1. 支持 # 或 ## 开头
+    # 2. 集群名称后可能有冒号也可能没有
+    # 3. 章节范围支持多种分隔符和括号格式
+    title_pattern = r'^#{1,2}\s*第([一二三四五六七八九十百千万]+)集群\s*[：:\uFF1A]?\s*[^\n]*?[（(]?\s*第\s*(\d+)\s*[-—~至]+\s*(\d+)\s*章'
+    
+    # 找到所有集群标题的位置
+    title_matches = list(re.finditer(title_pattern, blueprint_text, flags=re.MULTILINE))
+    
+    for i, match in enumerate(title_matches):
+        start_pos = match.start()
+        # 集群内容结束位置：下一个集群开始前，或文件末尾
+        end_pos = title_matches[i + 1].start() if i + 1 < len(title_matches) else len(blueprint_text)
+        
+        # 提取完整的集群内容（包括后续的元数据行）
+        cluster_content = blueprint_text[start_pos:end_pos].strip()
+        
+        # 提取起始章节号
+        start_chapter = int(match.group(2)) if match.group(2) else 0
+        if start_chapter > 0:
+            cluster_headers.append((start_chapter, cluster_content))
+    
+    return cluster_headers
+
 def invoke_with_streaming(llm_adapter, prompt: str, stream_callback: callable = None) -> str:
     """
     调用LLM生成内容，支持流式输出
@@ -132,6 +175,13 @@ def Chapter_blueprint_generate_range_stream(
     chunk_size = compute_chunk_size(end_chapter - start_chapter + 1, max_tokens)
     logging.info(f"Generating chapters [{start_chapter}..{end_chapter}], computed chunk_size = {chunk_size}.")
 
+    # 提取集群标题和元数据（在处理章节前先保存）
+    cluster_headers = []
+    if existing_blueprint:
+        cluster_headers = extract_cluster_headers(existing_blueprint)
+        if cluster_headers:
+            logging.info(f"Found {len(cluster_headers)} cluster headers to preserve.")
+
     # 将已有目录分割成章节列表
     existing_chapters = []
     if existing_blueprint:
@@ -192,7 +242,9 @@ def Chapter_blueprint_generate_range_stream(
         # 获取上下文目录（限制为最近100章）
         # 包含：起始章节之前的章节 + 生成范围内的已有章节 + 结束章节之后的章节（最多50章）
         in_range_chapters_list = [text for num, text in sorted(in_range_chapters.items())]
-        context_blueprint = "\n\n".join(before_chapters + in_range_chapters_list + after_chapters[-50:])
+        # 确保after_chapters不为空时才进行切片
+        after_chapters_sample = after_chapters[-50:] if after_chapters else []
+        context_blueprint = "\n\n".join(before_chapters + in_range_chapters_list + after_chapters_sample)
         limited_blueprint = limit_chapter_blueprint(context_blueprint, 100)
 
         # 构建提示词
@@ -203,7 +255,8 @@ def Chapter_blueprint_generate_range_stream(
             n=current_start,
             m=current_end,
             user_guidance=user_guidance,
-            generation_requirements=generation_requirements if generation_requirements else "无特殊要求"
+            generation_requirements=generation_requirements if generation_requirements else "无特殊要求",
+            world_building=""  # 添加world_building参数，设为空字符串
         )
 
         logging.info(f"Generating chapters [{current_start}..{current_end}] in a chunk...")
@@ -284,8 +337,9 @@ def Chapter_blueprint_generate_range_stream(
                 all_chapters.append((chapter_num, text))
         
         # 添加 in_range_chapters（生成范围内的已有章节）
-        for chapter_num, text in sorted(in_range_chapters.items()):
-            all_chapters.append((chapter_num, text))
+        if in_range_chapters:  # 确保in_range_chapters不为空
+            for chapter_num, text in sorted(in_range_chapters.items()):
+                all_chapters.append((chapter_num, text))
 
         # 添加新生成的章节
         for new_chapter_num, new_chapter_text in new_chapters:
@@ -331,8 +385,54 @@ def Chapter_blueprint_generate_range_stream(
 
         current_start = current_end + 1
 
+    # 重新构建最终结果，插入集群标题（仅在有集群标题时执行）
+    if cluster_headers:
+        # 有集群标题，需要重新解析并插入
+        cluster_headers.sort(key=lambda x: x[0])
+        final_parts = []
+        inserted_clusters = set()  # 记录已插入的集群标题
+        
+        # 将 final_blueprint 重新分割成章节
+        final_chapters = re.findall(r"(第\s*\d+\s*章[\s\S]*?)(?=第\s*\d+\s*章[\s\S]*?$|$)", final_blueprint, flags=re.DOTALL)
+        
+        for chapter_text in final_chapters:
+            chapter_text = chapter_text.strip()
+            match = re.search(r"第\s*(\d+)\s*章", chapter_text)
+            if match:
+                chapter_num = int(match.group(1))
+                
+                # 检查是否需要在此章节之前插入集群标题
+                for cluster_start, cluster_content in cluster_headers:
+                    if cluster_start == chapter_num and cluster_start not in inserted_clusters:
+                        final_parts.append(cluster_content)
+                        inserted_clusters.add(cluster_start)
+                        logging.info(f"Inserted cluster header at chapter {cluster_start}")
+                
+                # 添加章节内容
+                final_parts.append(chapter_text)
+        
+        # 检查是否有集群标题在所有章节之前（处理边界情况）
+        if final_chapters:
+            first_chapter_match = re.search(r"第\s*(\d+)\s*章", final_chapters[0])
+            if first_chapter_match:
+                first_chapter_num = int(first_chapter_match.group(1))
+                # 检查是否有集群标题起始章节小于第一章
+                for cluster_start, cluster_content in cluster_headers:
+                    if cluster_start < first_chapter_num and cluster_start not in inserted_clusters:
+                        final_parts.insert(0, cluster_content)
+                        inserted_clusters.add(cluster_start)
+                        logging.info(f"Inserted cluster header at beginning (chapter {cluster_start})")
+        
+        # 构建最终的目录内容
+        final_blueprint_with_headers = "\n\n".join(final_parts)
+        logging.info(f"Blueprint rebuilt with {len(inserted_clusters)} cluster headers inserted.")
+    else:
+        # 没有集群标题，直接使用原有内容
+        final_blueprint_with_headers = final_blueprint
+        logging.info("No cluster headers found, using original blueprint content")
+
     # 保存最终结果到文件
     clear_file_content(filename_dir)
-    save_string_to_txt(final_blueprint.strip(), filename_dir)
+    save_string_to_txt(final_blueprint_with_headers.strip(), filename_dir)
 
     logging.info(f"Chapters [{start_chapter}..{end_chapter}] blueprint have been generated successfully.")

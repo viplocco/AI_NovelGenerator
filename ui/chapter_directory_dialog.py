@@ -583,14 +583,16 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
         finally:
             # 标记为非生成中
             self.is_generating = False
-            # 标记已经生成过
-            self.has_generated = True
+            # 只有在生成成功时才标记已经生成过
+            if not generation_failed:
+                self.has_generated = True
             
             # 更新所有UI状态
             def update_final_state():
                 self._update_button_state()
-                # 更新按钮文本为"重新生成"
-                self._update_generate_button_text(is_regenerating=True)
+                # 只有在生成成功时才更新按钮文本为"重新生成"
+                if not generation_failed:
+                    self._update_generate_button_text(is_regenerating=True)
                 
                 if generation_failed:
                     # 清除"正在连接LLM，请稍候..."的提示信息

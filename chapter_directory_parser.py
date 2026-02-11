@@ -26,6 +26,7 @@ def parse_chapter_blueprint(blueprint_text: str):
     #   第1章 - 紫极光下的预兆
     #   第1章 - [紫极光下的预兆]
     #   **第1章 - 紫极光下的预兆**
+    #   第1章 - 紫极光下的预兆（无方括号或星号）
     chapter_number_pattern = re.compile(r'^\*\*第\s*(\d+)\s*章\s*-\s*(.*?)\*\*$|^第\s*(\d+)\s*章\s*-\s*(.*?)$|^第\s*(\d+)\s*章\s*-\s*\[(.*?)\]$')
 
     # 增强的正则表达式，支持更多格式变体

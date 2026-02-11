@@ -11,6 +11,7 @@ from prompt_definitions import summary_prompt, update_character_state_prompt, up
 from novel_generator.common import invoke_with_cleaning
 from utils import read_file, clear_file_content, save_string_to_txt
 from novel_generator.vectorstore_utils import update_vector_store
+from chapter_directory_parser import get_chapter_info_from_blueprint
 
 def finalize_chapter(
     novel_number: int,
@@ -76,6 +77,24 @@ def finalize_chapter(
     old_character_state = read_file(character_state_file)
     log(f"✓ 原角色状态长度: {len(old_character_state)}字")
 
+    # 步骤2.5: 获取章节信息（用于摘要生成）
+    log("📋 步骤2.5/7: 获取章节信息")
+    directory_file = os.path.join(filepath, "Novel_directory.txt")
+    blueprint_text = read_file(directory_file)
+    chapter_info = get_chapter_info_from_blueprint(blueprint_text, novel_number)
+    
+    chapter_title = chapter_info.get("chapter_title", f"第{novel_number}章")
+    chapter_role = chapter_info.get("chapter_role", "未设定")
+    chapter_purpose = chapter_info.get("chapter_purpose", "未设定")
+    surface_cultivation = chapter_info.get("surface_cultivation", "未设定")
+    actual_cultivation = chapter_info.get("actual_cultivation", "未设定")
+    scene_location = chapter_info.get("scene_location", "未设定")
+    characters_involved = chapter_info.get("characters_involved", "未指定")
+    key_items = chapter_info.get("key_items", "未指定")
+    
+    log(f"✓ 章节标题: {chapter_title}")
+    log(f"✓ 章节定位: {chapter_role}")
+
     # 步骤3: 创建LLM适配器
     log("📋 步骤3/7: 创建LLM适配器")
     try:
@@ -98,8 +117,17 @@ def finalize_chapter(
     log("📝 正在生成新的前文摘要...")
     try:
         prompt_summary = summary_prompt.format(
+            chapter_number=novel_number,
+            chapter_title=chapter_title,
+            chapter_role=chapter_role,
+            chapter_purpose=chapter_purpose,
             chapter_text=chapter_text,
-            global_summary=old_global_summary
+            global_summary=old_global_summary,
+            surface_cultivation=surface_cultivation,
+            actual_cultivation=actual_cultivation,
+            spatial_coordinates=scene_location,
+            characters_involved=characters_involved,
+            key_items=key_items
         )
         log(f"📝 摘要提示词长度: {len(prompt_summary)}字")
         new_global_summary = invoke_with_cleaning(llm_adapter, prompt_summary)

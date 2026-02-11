@@ -317,91 +317,68 @@ def generate_chapter_draft_ui(self):
             embedding_model_name = self.embedding_model_name_var.get().strip()
             embedding_k = self.safe_get_int(self.embedding_retrieval_k_var, 4)
 
-            self.safe_log(f"生成第{chap_num}章草稿：准备生成请求提示词...")
+            self.safe_log(f"生成第{chap_num}章草稿：准备打开提示词编辑窗口...")
 
-            # 调用新添加的 build_chapter_prompt 函数构造初始提示词
-            from novel_generator.chapter import build_chapter_prompt
-            prompt_text = build_chapter_prompt(
-                api_key=api_key,
-                base_url=base_url,
-                model_name=model_name,
-                filepath=filepath,
-                novel_number=chap_num,
-                word_number=word_number,
-                temperature=temperature,
-                user_guidance=user_guidance,
-                characters_involved=char_inv,
-                key_items=key_items,
-                scene_location=scene_loc,
-                time_constraint=time_constr,
-                embedding_api_key=embedding_api_key,
-                embedding_url=embedding_url,
-                embedding_interface_format=embedding_interface_format,
-                embedding_model_name=embedding_model_name,
-                embedding_retrieval_k=embedding_k,
-                interface_format=interface_format,
-                max_tokens=max_tokens,
-                timeout=timeout_val
-            )
-
-            # 弹出可编辑提示词对话框，等待用户确认或取消
+            # 弹出提示词对话框，等待用户构建提示词并确认或取消
             result = {"prompt": None}
             event = threading.Event()
 
             def create_dialog():
                 dialog = ctk.CTkToplevel(self.master)
-                dialog.title("当前章节请求提示词（可编辑）")
-                dialog.geometry("600x400")
-                text_box = ctk.CTkTextbox(dialog, wrap="word", font=("Microsoft YaHei", 12))
-                text_box.pack(fill="both", expand=True, padx=10, pady=10)
+                dialog.title("当前章节请求提示词")
+
+                # 设置窗口大小为900x700，与"生成章节目录"弹窗一致
+                screen_width = dialog.winfo_screenwidth()
+                screen_height = dialog.winfo_screenheight()
+                x = (screen_width - 900) // 2
+                y = (screen_height - 700) // 2
+                dialog.geometry(f'900x700+{x}+{y}')
+                dialog.resizable(True, True)
+                dialog.minsize(600, 500)
+
+                # 主框架
+                main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+                main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+                # 章节范围框架（只读显示）
+                chapter_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+                chapter_frame.pack(fill="x", pady=(0, 10))
+
+                ctk.CTkLabel(chapter_frame, text="当前章节:", font=("Microsoft YaHei", 11), fg_color="transparent").grid(row=0, column=0, padx=5, pady=8, sticky="w")
+                chapter_label = ctk.CTkLabel(chapter_frame, text=f"第{chap_num}章", font=("Microsoft YaHei", 11), fg_color="transparent")
+                chapter_label.grid(row=0, column=1, padx=5, pady=8)
+
+                ctk.CTkLabel(chapter_frame, text="目标字数:", font=("Microsoft YaHei", 11), fg_color="transparent").grid(row=0, column=2, padx=5, pady=8, sticky="w")
+                word_label = ctk.CTkLabel(chapter_frame, text=f"{word_number}字", font=("Microsoft YaHei", 11), fg_color="transparent")
+                word_label.grid(row=0, column=3, padx=5, pady=8)
+
+                # 提示词文本框区域
+                prompt_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+                prompt_frame.pack(fill="both", expand=True, pady=(0, 10))
+
+                ctk.CTkLabel(prompt_frame, text="请求提示词（可编辑）:", font=("Microsoft YaHei", 11), fg_color="transparent").pack(anchor="w", pady=(5, 3))
+
+                text_box = ctk.CTkTextbox(prompt_frame, wrap="word", font=("Microsoft YaHei", 11))
+                text_box.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+                # 字数统计标签和进度条
+                progress_frame = ctk.CTkFrame(prompt_frame, fg_color="transparent")
+                progress_frame.pack(side="bottom", fill="x", padx=5, pady=5)
+                
+                # 进度条
+                progress_bar = ctk.CTkProgressBar(progress_frame, width=200)
+                progress_bar.pack(side="left", padx=5)
+                progress_bar.set(0)  # 初始进度为0
+
+                # 进度描述标签
+                progress_label = ctk.CTkLabel(progress_frame, text="准备中...", font=("Microsoft YaHei", 10), fg_color="transparent")
+                progress_label.pack(side="left", padx=5)
 
                 # 字数统计标签
-                wordcount_label = ctk.CTkLabel(dialog, text="字数：0", font=("Microsoft YaHei", 12))
-                wordcount_label.pack(side="left", padx=(10,0), pady=5)
-                
-                # 插入角色内容
-                final_prompt = prompt_text
-                role_names = [name.strip() for name in self.char_inv_text.get("0.0", "end").strip().split(',') if name.strip()]
-                role_lib_path = os.path.join(filepath, "角色库")
-                role_contents = []
-                
-                if os.path.exists(role_lib_path):
-                    for root, dirs, files in os.walk(role_lib_path):
-                        for file in files:
-                            if file.endswith(".txt") and os.path.splitext(file)[0] in role_names:
-                                file_path = os.path.join(root, file)
-                                try:
-                                    with open(file_path, 'r', encoding='utf-8') as f:
-                                        role_contents.append(f.read().strip())  # 直接使用文件内容，不添加重复名字
-                                except Exception as e:
-                                    self.safe_log(f"读取角色文件 {file} 失败: {str(e)}")
-                
-                if role_contents:
-                    role_content_str = "\n".join(role_contents)
-                    # 更精确的替换逻辑，处理不同情况下的占位符
-                    placeholder_variations = [
-                        "核心人物(可能未指定)：{characters_involved}",
-                        "核心人物：{characters_involved}",
-                        "核心人物(可能未指定):{characters_involved}",
-                        "核心人物:{characters_involved}"
-                    ]
-                    
-                    for placeholder in placeholder_variations:
-                        if placeholder in final_prompt:
-                            final_prompt = final_prompt.replace(
-                                placeholder,
-                                f"核心人物：\n{role_content_str}"
-                            )
-                            break
-                    else:  # 如果没有找到任何已知占位符变体
-                        lines = final_prompt.split('\n')
-                        for i, line in enumerate(lines):
-                            if "核心人物" in line and "：" in line:
-                                lines[i] = f"核心人物：\n{role_content_str}"
-                                break
-                        final_prompt = '\n'.join(lines)
-
-                text_box.insert("0.0", final_prompt)
+                wordcount_label = ctk.CTkLabel(progress_frame, text="字数：0", font=("Microsoft YaHei", 10), fg_color="transparent")
+                wordcount_label.pack(side="right", padx=5)
+    
+                # 初始时不插入任何内容，等待用户点击"构建提示词"按钮
                 # 更新字数函数
                 def update_word_count(event=None):
                     text = text_box.get("0.0", "end-1c")
@@ -412,20 +389,142 @@ def generate_chapter_draft_ui(self):
                 text_box.bind("<ButtonRelease>", update_word_count)
                 update_word_count()  # 初始化统计
 
-                button_frame = ctk.CTkFrame(dialog)
-                button_frame.pack(pady=10)
+                # 按钮框架
+                button_frame = ctk.CTkFrame(main_frame)
+                button_frame.pack(fill="x", pady=(10, 0))
+
+                def on_build_prompt():
+                    # 禁用构建按钮，防止重复点击
+                    btn_build.configure(state="disabled")
+                    self.safe_log(f"开始构建第{chap_num}章提示词...")
+
+                    # 提示词更新回调
+                    def on_prompt_update(text):
+                        def update():
+                            text_box.insert("end", text)
+                            text_box.see("end")
+                            update_word_count()
+                        self.master.after(0, update)
+
+                    # 进度更新回调
+                    def on_progress_update(progress, description):
+                        def update():
+                            progress_bar.set(progress)
+                            progress_label.configure(text=description)
+                        self.master.after(0, update)
+
+                    def build_prompt_in_thread():                        
+                        try:
+                            # 调用 build_chapter_prompt 函数构造初始提示词
+                            from novel_generator.chapter import build_chapter_prompt
+                            prompt_text = build_chapter_prompt(
+                                api_key=api_key,
+                                base_url=base_url,
+                                model_name=model_name,
+                            filepath=filepath,
+                            novel_number=chap_num,
+                            word_number=word_number,
+                            temperature=temperature,
+                            user_guidance=user_guidance,
+                            characters_involved=char_inv,
+                            key_items=key_items,
+                            scene_location=scene_loc,
+                            time_constraint=time_constr,
+                            embedding_api_key=embedding_api_key,
+                            embedding_url=embedding_url,
+                            embedding_interface_format=embedding_interface_format,
+                            embedding_model_name=embedding_model_name,
+                            embedding_retrieval_k=embedding_k,
+                            interface_format=interface_format,
+                            max_tokens=max_tokens,
+                            timeout=timeout_val,
+                            prompt_callback=on_prompt_update,
+                            progress_callback=on_progress_update
+                        )
+
+                            # 插入角色内容
+                            final_prompt = prompt_text
+                            role_names = [name.strip() for name in self.char_inv_text.get("0.0", "end").strip().split(',') if name.strip()]
+                            role_lib_path = os.path.join(filepath, "角色库")
+                            role_contents = []
+
+                            if os.path.exists(role_lib_path):
+                                for root, dirs, files in os.walk(role_lib_path):
+                                    for file in files:
+                                        if file.endswith(".txt") and os.path.splitext(file)[0] in role_names:
+                                            file_path = os.path.join(root, file)
+                                            try:
+                                                with open(file_path, 'r', encoding='utf-8') as f:
+                                                    role_contents.append(f.read().strip())  # 直接使用文件内容，不添加重复名字
+                                            except Exception as e:
+                                                self.safe_log(f"读取角色文件 {file} 失败: {str(e)}")
+
+                            if role_contents:
+                                role_content_str = "\n".join(role_contents)
+                                # 更精确的替换逻辑，处理不同情况下的占位符
+                                placeholder_variations = [
+                                    "核心人物(可能未指定)：{characters_involved}",
+                                    "核心人物：{characters_involved}",
+                                    "核心人物(可能未指定):{characters_involved}",
+                                    "核心人物:{characters_involved}"
+                                ]
+
+                                for placeholder in placeholder_variations:
+                                    if placeholder in final_prompt:
+                                        final_prompt = final_prompt.replace(
+                                            placeholder,
+                                            f"核心人物：\n{role_content_str}"
+                                        )
+                                        break
+                                else:  # 如果没有找到任何已知占位符变体
+                                    lines = final_prompt.split('\n')
+                                    for i, line in enumerate(lines):
+                                        if "核心人物" in line and "：" in line:
+                                            lines[i] = f"核心人物：\n{role_content_str}"
+                                            break
+                                    final_prompt = '\n'.join(lines)
+
+                            # 启用按钮
+                            def enable_buttons():
+                                btn_build.configure(state="normal")
+                                btn_confirm.configure(state="normal")
+                                self.safe_log(f"✅ 第{chap_num}章草稿：提示词构建完成。")
+
+                            self.master.after(0, enable_buttons)
+                        except Exception as e:
+                            # 在主线程中显示错误
+                            error_message = str(e)
+                            def show_error():
+                                btn_build.configure(state="normal")
+                                self.safe_log(f"❌ 构建提示词时出错: {error_message}")
+                                messagebox.showerror("错误", f"构建提示词时出错: {error_message}")
+
+                            self.master.after(0, show_error)
+
+                    # 在后台线程中执行构建提示词的操作
+                    threading.Thread(target=build_prompt_in_thread, daemon=True).start()
+
                 def on_confirm():
                     result["prompt"] = text_box.get("1.0", "end").strip()
                     dialog.destroy()
                     event.set()
+
                 def on_cancel():
                     result["prompt"] = None
                     dialog.destroy()
                     event.set()
-                btn_confirm = ctk.CTkButton(button_frame, text="确认使用", font=("Microsoft YaHei", 12), command=on_confirm)
-                btn_confirm.pack(side="left", padx=10)
-                btn_cancel = ctk.CTkButton(button_frame, text="取消请求", font=("Microsoft YaHei", 12), command=on_cancel)
-                btn_cancel.pack(side="left", padx=10)
+
+                # 构建提示词按钮
+                btn_build = ctk.CTkButton(button_frame, text="构建提示词", font=("Microsoft YaHei", 11), command=on_build_prompt)
+                btn_build.pack(side="left", padx=5, pady=10)
+
+                # 确认使用按钮
+                btn_confirm = ctk.CTkButton(button_frame, text="确认使用", font=("Microsoft YaHei", 11), command=on_confirm, state="disabled")
+                btn_confirm.pack(side="left", padx=5, pady=10)
+
+                # 取消请求按钮
+                btn_cancel = ctk.CTkButton(button_frame, text="取消请求", font=("Microsoft YaHei", 11), command=on_cancel)
+                btn_cancel.pack(side="right", padx=5, pady=10)
                 # 若用户直接关闭弹窗，则调用 on_cancel 处理
                 dialog.protocol("WM_DELETE_WINDOW", on_cancel)
                 dialog.grab_set()
@@ -750,6 +849,19 @@ def show_plot_arcs_ui(self):
     top = ctk.CTkToplevel(self.master)
     top.title("剧情要点/未解决冲突")
     top.geometry("600x400")
+
+    # 设置窗口为临时窗口，并保持在顶层
+    top.transient(self.master)
+    top.grab_set()
+
+    # 居中显示弹窗
+    top.update_idletasks()
+    width = top.winfo_width()
+    height = top.winfo_height()
+    x = (top.winfo_screenwidth() // 2) - (width // 2)
+    y = (top.winfo_screenheight() // 2) - (height // 2)
+    top.geometry(f'{width}x{height}+{x}+{y}')
+
     text_area = ctk.CTkTextbox(top, wrap="word", font=("Microsoft YaHei", 12))
     text_area.pack(fill="both", expand=True, padx=10, pady=10)
     text_area.insert("0.0", arcs_text)

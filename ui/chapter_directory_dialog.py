@@ -554,26 +554,28 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
                 filename_dir = os.path.join(self.filepath, "Novel_directory.txt")
                 saved_content = read_file(filename_dir)
                 if saved_content and saved_content.strip():
-                    # 提取新生成的章节内容
+                    # 使用parse_blueprint_blocks解析单元和章节
+                    from novel_generator.blueprint import parse_blueprint_blocks
                     import re
-                    # 匹配生成范围内的章节
-                    pattern = r"(第\s*\d+\s*章[\s\S]*?)(?=第\s*\d+\s*章[\s\S]*?$|$)"
-                    chapters = re.findall(pattern, saved_content.strip(), flags=re.DOTALL)
+                    units, chapters = parse_blueprint_blocks(saved_content.strip())
 
                     # 筛选出在生成范围内的章节
-                    new_chapters = []
+                    display_parts = []
+                    # 添加所有单元信息
+                    display_parts.extend(units)
+                    # 添加生成范围内的章节
                     for chapter in chapters:
                         match = re.search(r"第\s*(\d+)\s*章", chapter)
                         if match:
                             chapter_num = int(match.group(1))
                             if start_chapter <= chapter_num <= end_chapter:
-                                new_chapters.append(chapter)
+                                display_parts.append(chapter)
 
                     # 清空当前显示
                     self.output_text.delete("0.0", "end")
-                    # 只显示新生成的章节内容
-                    if new_chapters:
-                        self.output_text.insert("0.0", "\n\n".join(new_chapters))
+                    # 显示单元和章节
+                    if display_parts:
+                        self.output_text.insert("0.0", "\n\n".join(display_parts))
             self.master.after(0, update_ui_with_saved_content)
 
         except Exception as e:

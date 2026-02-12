@@ -27,7 +27,8 @@ def parse_chapter_blueprint(blueprint_text: str):
     #   第1章 - [紫极光下的预兆]
     #   **第1章 - 紫极光下的预兆**
     #   第1章 - 紫极光下的预兆（无方括号或星号）
-    chapter_number_pattern = re.compile(r'^\*\*第\s*(\d+)\s*章\s*-\s*(.*?)\*\*$|^第\s*(\d+)\s*章\s*-\s*(.*?)$|^第\s*(\d+)\s*章\s*-\s*\[(.*?)\]$')
+    #   第1章 - 紫极光下的预兆**（不完整的markdown格式，LLM可能生成）
+    chapter_number_pattern = re.compile(r'^\*\*第\s*(\d+)\s*章\s*-\s*(.*?)\*\*$|^第\s*(\d+)\s*章\s*-\s*(.*?)\**$|^第\s*(\d+)\s*章\s*-\s*\[(.*?)\]$')
 
     # 增强的正则表达式，支持更多格式变体
     # 支持的格式：
@@ -77,13 +78,16 @@ def parse_chapter_blueprint(blueprint_text: str):
             chapter_number = int(header_match.group(1))
             chapter_title  = header_match.group(2).strip()
         elif header_match.group(3) is not None:
-            # 格式：第X章 - 标题
+            # 格式：第X章 - 标题（可能有结尾**）
             chapter_number = int(header_match.group(3))
             chapter_title  = header_match.group(4).strip()
         else:
             # 格式：第X章 - [标题]
             chapter_number = int(header_match.group(5))
             chapter_title  = header_match.group(6).strip()
+
+        # 清理标题中可能残留的 * 字符（处理LLM生成的不完整markdown格式）
+        chapter_title = chapter_title.rstrip('*').strip()
 
         # 从后面的行匹配其他字段
         for line in lines[1:]:
@@ -185,6 +189,153 @@ def parse_chapter_blueprint(blueprint_text: str):
     # 按照 chapter_number 排序后返回
     results.sort(key=lambda x: x["chapter_number"])
     return results
+
+
+def parse_unit_blueprint(blueprint_text: str):
+    """
+    解析章节目录中的单元信息，返回一个列表，每个元素是一个 dict：
+    {
+      "unit_number": int,               # 单元序号
+      "unit_title": str,               # 单元标题
+      "unit_location": str,            # 本单元定位
+      "unit_purpose": str,             # 核心作用
+      "unit_summary": str,             # 内容摘要
+      "cultivation_range": str,        # 修为等级范围
+      "spatial_range": str,            # 空间坐标范围
+      "recommended_techniques": str,   # 推荐的跨章节写作手法
+      "start_chapter": int,            # 起始章节号
+      "end_chapter": int               # 结束章节号（根据包含章节数推断）
+    }
+    """
+    # 按空行分块
+    chunks = re.split(r'\n\s*\n', blueprint_text.strip())
+    units = []
+    
+    # 单元标题正则：支持 "第1单元 - 标题（包含章节数：3-5章）" 或类似格式
+    unit_pattern = re.compile(r'^第\s*(\d+)\s*单元\s*-\s*(.+?)\s*（包含章节数\s*[:：]\s*(\d+)\s*章）$')
+    
+    # 单元字段正则
+    location_pattern = re.compile(r'^本单元定位\s*[:：]\s*(.+)$')
+    purpose_pattern = re.compile(r'^核心作用\s*[:：]\s*(.+)$')
+    summary_pattern = re.compile(r'^内容摘要\s*[:：]\s*(.+)$')
+    cultivation_pattern = re.compile(r'^修为等级范围\s*[:：]\s*(.+)$')
+    spatial_pattern = re.compile(r'^空间坐标范围\s*[:：]\s*(.+)$')
+    techniques_pattern = re.compile(r'^推荐的跨章节写作手法\s*[:：]\s*(.+)$')
+    
+    current_unit = None
+    capturing_unit = False
+    
+    for chunk in chunks:
+        lines = chunk.strip().splitlines()
+        if not lines:
+            continue
+            
+        first_line = lines[0].strip()
+        unit_match = unit_pattern.match(first_line)
+        
+        if unit_match:
+            # 如果之前有一个单元正在捕获，先结束它
+            if current_unit and capturing_unit:
+                units.append(current_unit)
+            
+            # 开始新的单元
+            unit_number = int(unit_match.group(1))
+            unit_title = unit_match.group(2).strip()
+            chapter_count = int(unit_match.group(3))
+            
+            current_unit = {
+                "unit_number": unit_number,
+                "unit_title": unit_title,
+                "unit_location": "",
+                "unit_purpose": "",
+                "unit_summary": "",
+                "cultivation_range": "",
+                "spatial_range": "",
+                "recommended_techniques": "",
+                "start_chapter": 0,  # 稍后计算
+                "end_chapter": 0,    # 稍后计算
+                "chapter_count": chapter_count
+            }
+            capturing_unit = True
+            
+            # 解析单元内的其他字段
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # 尝试匹配各个字段
+                m = location_pattern.match(line)
+                if m:
+                    current_unit["unit_location"] = m.group(1).strip()
+                    continue
+                    
+                m = purpose_pattern.match(line)
+                if m:
+                    current_unit["unit_purpose"] = m.group(1).strip()
+                    continue
+                    
+                m = summary_pattern.match(line)
+                if m:
+                    current_unit["unit_summary"] = m.group(1).strip()
+                    continue
+                    
+                m = cultivation_pattern.match(line)
+                if m:
+                    current_unit["cultivation_range"] = m.group(1).strip()
+                    continue
+                    
+                m = spatial_pattern.match(line)
+                if m:
+                    current_unit["spatial_range"] = m.group(1).strip()
+                    continue
+                    
+                m = techniques_pattern.match(line)
+                if m:
+                    current_unit["recommended_techniques"] = m.group(1).strip()
+                    continue
+        
+        elif capturing_unit and current_unit:
+            # 如果当前正在捕获单元，但这一行不是单元标题，检查是否是单元字段的延续
+            # 这里简单处理：如果遇到空行或新章节，结束当前单元
+            if not lines[0].strip() or re.match(r'^第\s*\d+\s*章', lines[0].strip()):
+                units.append(current_unit)
+                current_unit = None
+                capturing_unit = False
+    
+    # 处理最后一个单元
+    if current_unit and capturing_unit:
+        units.append(current_unit)
+    
+    # 计算每个单元的起始和结束章节号
+    # 简单假设：单元按顺序排列，且章节从1开始连续编号
+    current_chapter = 1
+    for unit in units:
+        unit["start_chapter"] = current_chapter
+        unit["end_chapter"] = current_chapter + unit["chapter_count"] - 1
+        current_chapter = unit["end_chapter"] + 1
+    
+    return units
+
+
+def get_unit_for_chapter(blueprint_text: str, target_chapter_number: int):
+    """
+    根据章节号查找所属单元信息
+    
+    参数:
+        blueprint_text: 章节目录文本
+        target_chapter_number: 目标章节号
+        
+    返回:
+        单元信息dict，如果找不到则返回None
+    """
+    units = parse_unit_blueprint(blueprint_text)
+    
+    for unit in units:
+        if unit["start_chapter"] <= target_chapter_number <= unit["end_chapter"]:
+            return unit
+    
+    return None
 
 
 def get_chapter_info_from_blueprint(blueprint_text: str, target_chapter_number: int):

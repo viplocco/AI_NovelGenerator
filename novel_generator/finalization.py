@@ -344,12 +344,17 @@ def _parse_character_state(character_state: str) -> dict:
             continue
         
         # 解析属性（支持子属性）
-        # 先尝试匹配带│前缀的格式（带或不带冒号）
-        # 使用更精确的正则表达式，确保只匹配属性名称，不匹配条目
-        attr_match = re.match(r"^│\s+([├└]──)([^：:：]+)\s*[:：]?$", original_line)
+        # 关键区分：
+        # - 属性行格式：├──属性名（没有│前缀）
+        # - 条目行格式：│  ├──内容（有│前缀）
+        # 所以属性匹配应该只匹配行首就是├──或└──的行（不带│前缀）
+        
+        # 匹配属性行：行首直接是├──或└──（不带│前缀）
+        attr_match = re.match(r"^([├└]──)([^：:：]+)\s*[:：]?$", original_line)
         if not attr_match:
-            # 再尝试匹配不带│前缀的格式（带或不带冒号）
-            attr_match = re.match(r"^([├└]──)([^：:：]+)\s*[:：]?$", original_line)
+            # 尝试strip后的行
+            attr_match = re.match(r"^([├└]──)([^：:：]+)\s*[:：]?$", line)
+        
         if attr_match:
             prefix, attr_name = attr_match.groups()
             attr_name = attr_name.strip()
@@ -369,9 +374,17 @@ def _parse_character_state(character_state: str) -> dict:
             prefix, content = item_match.groups()
             content = content.strip()
             if content:
-                # 检查内容是否是属性分类名称（避免将分类误识别为条目）
-                # 只有当内容完全匹配属性分类名称时才跳过
-                if content not in ["物品", "能力", "状态", "主要角色间关系网", "触发或加深的事件"]:
+                # 首先检查内容是否是属性分类名称
+                is_attr_name = False
+                for preset_attr in characters[current_char]:
+                    if content == preset_attr:
+                        # 这是属性行，切换当前属性
+                        current_attr = preset_attr
+                        is_attr_name = True
+                        break
+                
+                # 如果不是属性名称，才作为条目添加
+                if not is_attr_name:
                     characters[current_char][current_attr].append(content)
         else:
             # 尝试解析不以│开头的条目
@@ -380,8 +393,17 @@ def _parse_character_state(character_state: str) -> dict:
                 prefix, content = direct_item_match.groups()
                 content = content.strip()
                 if content:
-                    # 检查内容是否是属性分类名称（避免将分类误识别为条目）
-                    if content not in ["物品", "能力", "状态", "主要角色间关系网", "触发或加深的事件"]:
+                    # 首先检查内容是否是属性分类名称
+                    is_attr_name = False
+                    for preset_attr in characters[current_char]:
+                        if content == preset_attr:
+                            # 这是属性行，切换当前属性
+                            current_attr = preset_attr
+                            is_attr_name = True
+                            break
+                    
+                    # 如果不是属性名称，才作为条目添加
+                    if not is_attr_name:
                         characters[current_char][current_attr].append(content)
     
     return characters

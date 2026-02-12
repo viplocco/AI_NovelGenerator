@@ -16,7 +16,7 @@ from prompt_definitions import (
     knowledge_filter_prompt,
     knowledge_search_prompt
 )
-from chapter_directory_parser import get_chapter_info_from_blueprint
+from chapter_directory_parser import get_chapter_info_from_blueprint, get_unit_for_chapter
 from novel_generator.common import invoke_with_cleaning
 from utils import read_file, clear_file_content, save_string_to_txt
 from novel_generator.vectorstore_utils import (
@@ -540,6 +540,33 @@ def build_chapter_prompt(
     if os.path.exists(plot_arcs_file):
         plot_arcs_text = read_file(plot_arcs_file)
     
+    # 获取单元信息
+    unit_info = get_unit_for_chapter(blueprint_text, novel_number)
+    
+    # 构建单元信息文本
+    unit_info_text = ""
+    if unit_info:
+        # 获取单元标题和章节数
+        unit_title = unit_info.get('unit_title', '未知')
+        chapter_count = unit_info.get('chapter_count', 0)
+        
+        # 如果单元标题不包含章节数信息，则添加
+        if chapter_count > 0 and "（包含章节数" not in unit_title:
+            unit_title = f"{unit_title}（包含章节数：{chapter_count}章）"
+        
+        unit_info_text = f"""
+[单元信息]
+单元标题：{unit_title}
+单元定位：{unit_info.get('unit_location', '未知')}
+核心作用：{unit_info.get('unit_purpose', '未知')}
+内容摘要：{unit_info.get('unit_summary', '未知')}
+修为等级范围：{unit_info.get('cultivation_range', '未知')}
+空间坐标范围：{unit_info.get('spatial_range', '未知')}
+推荐的跨章节写作手法：{unit_info.get('recommended_techniques', '无')}
+"""
+    else:
+        unit_info_text = "\n[单元信息]\n当前章节未找到所属单元信息。\n"
+    
     # 获取章节信息
     if not blueprint_text or not blueprint_text.strip():
         print(f"错误: 章节目录为空，无法获取章节 {novel_number} 的信息")
@@ -572,7 +599,8 @@ def build_chapter_prompt(
             next_chapter_foreshadowing="未设定",
             next_chapter_plot_twist_level="★☆☆☆☆",
             next_chapter_summary="未设定",
-            filtered_context="（无知识库内容）"
+            filtered_context="（无知识库内容）",
+            unit_info=unit_info_text
         )
         # 调用回调函数显示提示词内容
         if prompt_callback:
@@ -584,7 +612,7 @@ def build_chapter_prompt(
     chapter_info = get_chapter_info_from_blueprint(blueprint_text, novel_number)
 
     if progress_callback:
-        progress_callback(0.2, "获取章节信息")
+        progress_callback(0.2, "获取章节和单元信息")
 
     chapter_title = chapter_info.get("chapter_title", f"第{novel_number}章")
     chapter_role = chapter_info.get("chapter_role", "未设定")
@@ -621,6 +649,7 @@ def build_chapter_prompt(
             novel_number=novel_number,
             word_number=word_number,
             chapter_title=chapter_title,
+            unit_info=unit_info_text,
             chapter_role=chapter_role,
             chapter_purpose=chapter_purpose,
             suspense_level=suspense_level,
@@ -729,6 +758,18 @@ def build_chapter_prompt(
         
         search_response = invoke_with_cleaning(llm_adapter, search_prompt)
         keyword_groups = parse_search_keywords(search_response)
+        
+        # 添加单元推荐的写作手法作为额外检索关键词（高优先级）
+        if unit_info and unit_info.get('recommended_techniques'):
+            techniques = unit_info['recommended_techniques']
+            # 处理多种分隔符：逗号、分号、顿号、空格
+            import re
+            tech_list = re.split(r'[,，;；、\s]+', techniques)
+            for tech in tech_list:
+                tech = tech.strip()
+                if tech and tech not in keyword_groups:
+                    # 将单元推荐的技法作为高优先级关键词（在前面添加）
+                    keyword_groups.insert(0, f"[单元技法] {tech}")
 
         # 执行向量检索
         all_contexts = []
@@ -844,7 +885,8 @@ def build_chapter_prompt(
         next_actual_cultivation=next_actual_cultivation,
         next_scene_location=next_scene_location,
         next_chapter_summary=next_chapter_summary,
-        filtered_context=filtered_context
+        filtered_context=filtered_context,
+        unit_info=unit_info_text
     )
 
     if prompt_callback:

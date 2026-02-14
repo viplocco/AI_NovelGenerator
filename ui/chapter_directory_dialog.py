@@ -5,6 +5,7 @@
 章节目录生成对话框UI类
 """
 import os
+import re
 import threading
 import customtkinter as ctk
 from tkinter import messagebox
@@ -312,9 +313,10 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
         self.progress_bar.pack(side="left", padx=5, pady=5)
         self.progress_bar.set(0)
 
-        # 恢复保存的输出结果（仅在有效内容时）
-        if hasattr(self, 'saved_output') and self.saved_output.strip():
-            self.output_text.insert("0.0", self.saved_output)
+        # 不再恢复保存的输出结果，每次打开对话框时输出区域应为空
+        # 用户可以通过"保存"按钮手动保存当前生成的内容
+        # if hasattr(self, 'saved_output') and self.saved_output.strip():
+        #     self.output_text.insert("0.0", self.saved_output)
         
 
     def _create_button_area(self):
@@ -333,6 +335,18 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
             text_color_disabled="gray"
         )
         self.btn_generate.pack(side="left", padx=5, pady=10)
+
+        # 保存按钮
+        self.btn_save = ctk.CTkButton(
+            button_frame,
+            text="保存",
+            command=self._on_save,
+            font=("Microsoft YaHei", 11),
+            fg_color=("#2e8b57", "#2e8b57"),
+            hover_color=("#1e6b47", "#1e6b47"),
+            text_color_disabled="gray"
+        )
+        self.btn_save.pack(side="left", padx=5, pady=10)
 
         # 取消按钮
         self.btn_cancel = ctk.CTkButton(
@@ -417,32 +431,53 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
             messagebox.showwarning("输入错误", "请输入有效的章节号")
             return
 
-        # 检查是否有重复生成的章节
-        duplicate_chapters = self._check_duplicate_chapters(start, end)
-        if duplicate_chapters:
-            # 构建提示信息
-            chapter_list = "、".join([f"第{ch}章" for ch in duplicate_chapters])
-            message = f"本次拟生成{start}-{end}章的章节目录，其中{chapter_list}会删除并重新生成，请确认！"
-            result = messagebox.askyesno("确认重新生成", message, parent=self)
+        # 分析生成范围对现有单元的影响
+        impact = self._analyze_generation_impact(start, end)
+        
+        # 如果有重复章节或受影响的单元，显示确认对话框
+        if impact['duplicate_chapters'] or impact['affected_units']:
+            # 构建详细的提示信息
+            message_lines = [f"本次拟生成第{start}-{end}章的章节目录。\n"]
+            
+            if impact['affected_units']:
+                message_lines.append("⚠️ 以下单元的所有章节目录将全部重新生成：")
+                for unit_info in impact['affected_units']:
+                    unit_range = unit_info['unit_range']
+                    chapters_in_range = unit_info['chapters_in_range']
+                    chapters_str = "、".join([f"第{ch}章" for ch in chapters_in_range])
+                    message_lines.append(
+                        f"  • 第{unit_info['unit_num']}单元（第{unit_range[0]}-{unit_range[1]}章）"
+                        f"\n    包含重复章节：{chapters_str}"
+                    )
+                message_lines.append("")
+            
+            if impact['new_chapters']:
+                new_chapters_str = "、".join([f"第{ch}章" for ch in impact['new_chapters']])
+                message_lines.append(f"📝 新生成章节：{new_chapters_str}\n")
+            
+            message_lines.append("请确认是否继续？")
+            
+            result = messagebox.askyesno(
+                "确认重新生成", 
+                "\n".join(message_lines), 
+                parent=self
+            )
+            
             if result:
-                # 用户确认重新生成，先删除这些章节
-                from novel_generator.blueprint import remove_chapter_ranges
-                # 将重复章节转换为连续的范围
-                chapter_ranges = []
-                if duplicate_chapters:
-                    duplicate_chapters.sort()
-                    start_range = duplicate_chapters[0]
-                    end_range = start_range
-                    for ch in duplicate_chapters[1:]:
-                        if ch == end_range + 1:
-                            end_range = ch
-                        else:
-                            chapter_ranges.append((start_range, end_range))
-                            start_range = ch
-                            end_range = ch
-                    chapter_ranges.append((start_range, end_range))
-                    # 删除这些章节
-                    remove_chapter_ranges(self.filepath, chapter_ranges)
+                # 用户确认，删除受影响的单元和章节
+                self._remove_affected_units_and_chapters(impact)
+                
+                # 关键修复：扩展生成范围以包含被删除单元的所有章节
+                # 例如：用户请求生成6-10章，第2单元（4-6章）被删除，
+                # 则生成范围应扩展为4-10章，避免4-5章丢失
+                if impact['affected_units']:
+                    # 找出所有受影响单元的最小章节号
+                    min_deleted_chapter = min(
+                        unit_info['unit_range'][0] for unit_info in impact['affected_units']
+                    )
+                    # 如果需要，扩展起始章节
+                    if min_deleted_chapter < start:
+                        start = min_deleted_chapter
             else:
                 return
 
@@ -515,6 +550,14 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
                         if "正在生成章节目录，请稍候..." in self.output_text.get("0.0", "end"):
                             self.output_text.delete("0.0", "end")
 
+                        # 检查是否是章节标题，如果是第一个章节，添加空行分隔
+                        if re.search(r'第\s*\d+\s*章(?!\s*单元)', chunk):
+                            full_content = self.output_text.get("0.0", "end")
+                            # 检查是否已包含章节标题
+                            if not re.search(r'第\s*\d+\s*章(?!\s*单元)', full_content):
+                                # 这是第一个章节，添加两个空行与单元信息分隔
+                                self.output_text.insert("end", "\n\n")
+
                         # 插入新文本
                         self.output_text.insert("end", chunk)
                         # 确保滚动到最新位置
@@ -559,10 +602,19 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
                     import re
                     units, chapters = parse_blueprint_blocks(saved_content.strip())
 
-                    # 筛选出在生成范围内的章节
                     display_parts = []
-                    # 添加所有单元信息
-                    display_parts.extend(units)
+                    
+                    # 只添加与生成范围相关的单元（通过检查单元的章节范围是否与生成范围重叠）
+                    for unit in units:
+                        # 匹配单元的章节范围，支持多种格式
+                        unit_range_match = re.search(r"(?:包含章节|章节范围)[：:]\s*(\d+)\s*[-~至]\s*(\d+)", unit, re.DOTALL)
+                        if unit_range_match:
+                            unit_start = int(unit_range_match.group(1))
+                            unit_end = int(unit_range_match.group(2))
+                            # 检查单元是否与生成范围有重叠
+                            if not (unit_end < start_chapter or unit_start > end_chapter):
+                                display_parts.append(unit)
+                    
                     # 添加生成范围内的章节
                     for chapter in chapters:
                         match = re.search(r"第\s*(\d+)\s*章", chapter)
@@ -616,17 +668,89 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
         # 保存当前状态
         self._save_dialog_state()
 
-        # 保存输出结果到文件
+        # 获取输出文本框中的内容（新生成的内容）
         output = self.output_text.get("0.0", "end").strip()
-        if output:
-            filename_dir = os.path.join(self.filepath, "Novel_directory.txt")
-            clear_file_content(filename_dir)
-            save_string_to_txt(output, filename_dir)
-            if show_message:
-                messagebox.showinfo("保存成功", "章节目录已保存")
-        else:
+        if not output:
             if show_message:
                 messagebox.showwarning("警告", "没有可保存的内容")
+            return
+
+        # 获取当前生成范围
+        try:
+            start_chapter = int(self.start_entry.get().strip())
+            end_chapter = int(self.end_entry.get().strip())
+        except ValueError:
+            start_chapter = 1
+            end_chapter = self.max_chapters
+
+        filename_dir = os.path.join(self.filepath, "Novel_directory.txt")
+
+        # 读取原有文件内容
+        existing_content = ""
+        if os.path.exists(filename_dir):
+            existing_content = read_file(filename_dir).strip()
+
+        # 导入解析函数
+        from novel_generator.blueprint import parse_blueprint_blocks, _interleave_units_and_chapters
+
+        # 解析原有内容
+        existing_units, existing_chapters = parse_blueprint_blocks(existing_content)
+
+        # 解析新生成的内容
+        new_units, new_chapters = parse_blueprint_blocks(output)
+
+        # 合并单元信息（新单元替换或添加到原有单元中）
+        def get_unit_number(unit_text):
+            match = re.search(r"第\s*(\d+)\s*单元", unit_text)
+            return int(match.group(1)) if match else 0
+
+        # 创建单元编号到单元文本的映射
+        unit_map = {}
+        for unit in existing_units:
+            unit_num = get_unit_number(unit)
+            if unit_num > 0:
+                unit_map[unit_num] = unit
+
+        # 用新单元更新映射
+        for unit in new_units:
+            unit_num = get_unit_number(unit)
+            if unit_num > 0:
+                unit_map[unit_num] = unit
+
+        # 按单元编号排序
+        merged_units = [unit_map[num] for num in sorted(unit_map.keys())]
+
+        # 合并章节信息
+        # 创建章节编号到章节文本的映射
+        chapter_map = {}
+        for chapter in existing_chapters:
+            match = re.search(r"第\s*(\d+)\s*章", chapter)
+            if match:
+                chapter_num = int(match.group(1))
+                chapter_map[chapter_num] = chapter
+
+        # 用新章节更新映射（只更新生成范围内的章节）
+        for chapter in new_chapters:
+            match = re.search(r"第\s*(\d+)\s*章", chapter)
+            if match:
+                chapter_num = int(match.group(1))
+                # 只更新生成范围内的章节
+                if start_chapter <= chapter_num <= end_chapter:
+                    chapter_map[chapter_num] = chapter
+
+        # 按章节编号排序
+        merged_chapters = [chapter_map[num] for num in sorted(chapter_map.keys())]
+
+        # 使用 _interleave_units_and_chapters 按正确顺序排列
+        final_parts = _interleave_units_and_chapters(merged_units, merged_chapters)
+        final_content = "\n\n".join(final_parts).strip()
+
+        # 保存合并后的内容
+        clear_file_content(filename_dir)
+        save_string_to_txt(final_content, filename_dir)
+
+        if show_message:
+            messagebox.showinfo("保存成功", "章节目录已保存")
 
     def _on_cancel(self):
         """处理取消按钮点击"""
@@ -658,6 +782,11 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
         # 开始生成/重新生成按钮 - 生成中禁用，否则启用
         self.btn_generate.configure(
             state="normal" if not self.is_generating else "disabled"
+        )
+
+        # 保存按钮 - 有内容且不在生成中时启用
+        self.btn_save.configure(
+            state="normal" if (has_output and not self.is_generating) else "disabled"
         )
 
         # 取消按钮 - 始终启用
@@ -701,6 +830,148 @@ class ChapterDirectoryDialog(ctk.CTkToplevel):
         except Exception as e:
             print(f"检查重复章节时出错: {e}")
             return []
+
+    def _get_unit_number(self, unit_text: str) -> int:
+        """获取单元编号"""
+        match = re.search(r"第\s*(\d+)\s*单元", unit_text)
+        return int(match.group(1)) if match else 0
+
+    def _get_unit_chapter_range(self, unit_text: str) -> tuple:
+        """获取单元的章节范围"""
+        match = re.search(r"(?:包含章节|章节范围)[：:]\s*(\d+)\s*[-~至]\s*(\d+)", unit_text, re.DOTALL)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return None, None
+
+    def _analyze_generation_impact(self, start: int, end: int) -> dict:
+        """
+        分析生成范围对现有单元的影响
+        
+        参数:
+            start: 起始章节号
+            end: 结束章节号
+            
+        返回:
+            {
+                'duplicate_chapters': [6],           # 重复的章节
+                'affected_units': [                  # 受影响的单元
+                    {
+                        'unit_num': 2,
+                        'unit_range': (4, 6),
+                        'unit_text': '...',
+                        'chapters_in_range': [4, 5, 6]
+                    }
+                ],
+                'new_chapters': [7, 8, 9, 10]        # 需要新生成的章节（不在已有单元覆盖范围内）
+            }
+        """
+        result = {
+            'duplicate_chapters': [],
+            'affected_units': [],
+            'new_chapters': []
+        }
+        
+        directory_file = os.path.join(self.filepath, "Novel_directory.txt")
+        if not os.path.exists(directory_file):
+            result['new_chapters'] = list(range(start, end + 1))
+            return result
+        
+        content = read_file(directory_file)
+        if not content:
+            result['new_chapters'] = list(range(start, end + 1))
+            return result
+        
+        from novel_generator.blueprint import parse_blueprint_blocks
+        units, chapters = parse_blueprint_blocks(content)
+        
+        # 找出已存在的章节
+        existing_chapters = set()
+        for chapter in chapters:
+            match = re.search(r"第\s*(\d+)\s*章", chapter)
+            if match:
+                existing_chapters.add(int(match.group(1)))
+        
+        # 找出重复章节
+        result['duplicate_chapters'] = sorted([
+            ch for ch in range(start, end + 1) if ch in existing_chapters
+        ])
+        
+        # 分析受影响的单元
+        covered_chapters = set()
+        for unit in units:
+            unit_num = self._get_unit_number(unit)
+            unit_start, unit_end = self._get_unit_chapter_range(unit)
+            
+            if unit_num > 0 and unit_start and unit_end:
+                # 检查单元是否与生成范围有重叠
+                if not (unit_end < start or unit_start > end):
+                    # 找出该单元中在生成范围内的章节
+                    chapters_in_range = [
+                        ch for ch in range(unit_start, unit_end + 1)
+                        if start <= ch <= end
+                    ]
+                    result['affected_units'].append({
+                        'unit_num': unit_num,
+                        'unit_range': (unit_start, unit_end),
+                        'unit_text': unit,
+                        'chapters_in_range': chapters_in_range
+                    })
+                    covered_chapters.update(range(unit_start, unit_end + 1))
+        
+        # 找出需要新生成的章节（不在已有单元覆盖范围内的章节）
+        all_chapters_in_range = set(range(start, end + 1))
+        result['new_chapters'] = sorted(all_chapters_in_range - covered_chapters)
+        
+        return result
+
+    def _remove_affected_units_and_chapters(self, impact: dict):
+        """
+        删除受影响的单元和章节
+        
+        参数:
+            impact: _analyze_generation_impact 返回的影响分析结果
+        """
+        from novel_generator.blueprint import parse_blueprint_blocks, _interleave_units_and_chapters
+        
+        filename_dir = os.path.join(self.filepath, "Novel_directory.txt")
+        content = read_file(filename_dir) if os.path.exists(filename_dir) else ""
+        
+        if not content:
+            return
+        
+        units, chapters = parse_blueprint_blocks(content)
+        
+        # 获取需要删除的单元编号
+        unit_nums_to_remove = {u['unit_num'] for u in impact['affected_units']}
+        
+        # 过滤掉需要删除的单元
+        remaining_units = [
+            u for u in units 
+            if self._get_unit_number(u) not in unit_nums_to_remove
+        ]
+        
+        # 获取需要删除的章节范围（受影响单元的所有章节）
+        chapters_to_remove = set()
+        for unit_info in impact['affected_units']:
+            unit_range = unit_info['unit_range']
+            chapters_to_remove.update(range(unit_range[0], unit_range[1] + 1))
+        
+        # 过滤掉需要删除的章节
+        remaining_chapters = []
+        for chapter in chapters:
+            match = re.search(r"第\s*(\d+)\s*章", chapter)
+            if match:
+                chapter_num = int(match.group(1))
+                if chapter_num not in chapters_to_remove:
+                    remaining_chapters.append(chapter)
+        
+        # 重新保存
+        final_parts = _interleave_units_and_chapters(remaining_units, remaining_chapters)
+        final_content = "\n\n".join(final_parts).strip()
+        
+        clear_file_content(filename_dir)
+        if final_content:
+            save_string_to_txt(final_content, filename_dir)
 
     def protocol_handler(self):
         """处理窗口关闭事件"""

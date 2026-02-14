@@ -204,15 +204,16 @@ def parse_unit_blueprint(blueprint_text: str):
       "spatial_range": str,            # 空间坐标范围
       "recommended_techniques": str,   # 推荐的跨章节写作手法
       "start_chapter": int,            # 起始章节号
-      "end_chapter": int               # 结束章节号（根据包含章节数推断）
+      "end_chapter": int               # 结束章节号（从单元标题中直接获取）
     }
     """
     # 按空行分块
     chunks = re.split(r'\n\s*\n', blueprint_text.strip())
     units = []
     
-    # 单元标题正则：支持 "第1单元 - 标题（包含章节数：3-5章）" 或类似格式
-    unit_pattern = re.compile(r'^第\s*(\d+)\s*单元\s*-\s*(.+?)\s*（包含章节数\s*[:：]\s*(\d+)\s*章）$')
+    # 单元标题正则：支持 "第1单元 - 标题（包含章节：3-5章）" 或类似格式
+    # 支持多种分隔符：-、~、到
+    unit_pattern = re.compile(r'^第\s*(\d+)\s*单元\s*-\s*(.+?)\s*（包含章节\s*[:：]\s*(\d+)\s*[-~到]+\s*(\d+)\s*章）$')
     
     # 单元字段正则
     location_pattern = re.compile(r'^本单元定位\s*[:：]\s*(.+)$')
@@ -241,7 +242,9 @@ def parse_unit_blueprint(blueprint_text: str):
             # 开始新的单元
             unit_number = int(unit_match.group(1))
             unit_title = unit_match.group(2).strip()
-            chapter_count = int(unit_match.group(3))
+            start_chapter = int(unit_match.group(3))
+            end_chapter = int(unit_match.group(4))
+            chapter_count = end_chapter - start_chapter + 1
             
             current_unit = {
                 "unit_number": unit_number,
@@ -252,8 +255,8 @@ def parse_unit_blueprint(blueprint_text: str):
                 "cultivation_range": "",
                 "spatial_range": "",
                 "recommended_techniques": "",
-                "start_chapter": 0,  # 稍后计算
-                "end_chapter": 0,    # 稍后计算
+                "start_chapter": start_chapter,
+                "end_chapter": end_chapter,
                 "chapter_count": chapter_count
             }
             capturing_unit = True
@@ -307,13 +310,8 @@ def parse_unit_blueprint(blueprint_text: str):
     if current_unit and capturing_unit:
         units.append(current_unit)
     
-    # 计算每个单元的起始和结束章节号
-    # 简单假设：单元按顺序排列，且章节从1开始连续编号
-    current_chapter = 1
-    for unit in units:
-        unit["start_chapter"] = current_chapter
-        unit["end_chapter"] = current_chapter + unit["chapter_count"] - 1
-        current_chapter = unit["end_chapter"] + 1
+    # 单元标题中已经包含了章节范围信息，不需要重新计算
+    # 直接使用从单元标题中提取的start_chapter和end_chapter
     
     return units
 

@@ -357,31 +357,161 @@ def format_chapter_info(chapter_info: dict) -> str:
         summary=chapter_info.get('chapter_summary', '未提供')
     )
 
-def parse_search_keywords(response_text: str) -> list:
-    """解析新版关键词格式（示例输入：'科技公司·数据泄露\n地下实验室·基因编辑'）"""
-    return [
-        line.strip().replace('·', ' ')
-        for line in response_text.strip().split('\n')
-        if '·' in line
-    ][:5]  # 最多取5组
+def safe_format(template: str, **kwargs) -> str:
+    """安全格式化函数，处理包含花括号的内容
+    
+    参数:
+        template: 模板字符串
+        **kwargs: 要替换的键值对
+    
+    返回:
+        格式化后的字符串
+    """
+    from string import Formatter
+    
+    # 转义所有字符串值中的花括号
+    safe_kwargs = {}
+    for key, value in kwargs.items():
+        if isinstance(value, str):
+            # 将{替换为{{，}替换为}}，避免被format误认为是占位符
+            safe_kwargs[key] = value.replace('{', '{{').replace('}', '}}')
+        else:
+            safe_kwargs[key] = value
+    
+    try:
+        return Formatter().format(template, **safe_kwargs)
+    except Exception as e:
+        # 如果格式化失败，记录错误并返回原始模板
+        logging.warning(f"格式化失败: {str(e)}, 使用原始模板")
+        return template
 
-def apply_content_rules(texts: list, novel_number: int) -> list:
-    """应用内容处理规则"""
+
+def extract_metadata(text: str, tag_name: str) -> str:
+    """提取知识库元数据，支持多种格式
+    
+    参数:
+        text: 包含元数据的文本
+        tag_name: 标签名称（如"类型"、"分类"、"关键词"）
+    
+    返回:
+        提取的元数据值，如果未找到则返回空字符串
+    """
+    if not text or not tag_name:
+        return ""
+    
+    # 支持多种换行符和格式的正则表达式模式
+    patterns = [
+        rf'【{tag_name}】(.+?)[\r\n]+',  # Windows换行符
+        rf'【{tag_name}】(.+?)\n',      # Unix换行符
+        rf'【{tag_name}】(.+?)(?=【|$)',  # 到下一个标签或结尾
+        rf'【{tag_name}】(.+?)\s+',      # 任意空白字符
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+    
+    return ""
+
+
+def parse_search_keywords(response_text: str) -> list:
+    """解析新版关键词格式（示例输入：'科技公司·数据泄露\n地下实验室·基因编辑'）
+    
+    解析规则：
+    1. 提取包含'·'的关键词组
+    2. 保留知识库分类名称（如场景构建模板、悬念营造手法等）
+    3. 最多返回5组关键词
+    """
+    keywords = []
+    for line in response_text.strip().split('\n'):
+        line = line.strip()
+        if '·' in line:
+            # 保留原始格式，便于后续向量检索
+            keywords.append(line)
+        elif any(cat in line for cat in ['场景构建模板', '悬念营造手法', '对话写作技巧', 
+                                            '视角切换技巧', '时间跳跃与回忆穿插',
+                                            '多线并进冲突集中爆发', '伏笔的长线铺设',
+                                            '个人物品及状态盘点']):
+            # 单独的分类名称也作为关键词
+            keywords.append(line)
+    return keywords[:5]  # 最多取5组
+
+def apply_content_rules(texts: list, novel_number: int, chapter_info: dict = None) -> list:
+    """应用内容处理规则
+    
+    参数:
+        texts: 待处理的文本列表
+        novel_number: 当前章节编号
+        chapter_info: 章节信息字典，包含chapter_role, chapter_purpose等字段
+    """
     processed = []
+    seen_texts = set()  # 用于去重的集合，存储已处理的文本内容
+    
     for text in texts:
+        # 提取文本核心内容用于去重（去除前缀标记）
+        core_text = text
+        for prefix in ["[TECHNIQUE] ", "[SETTING] ", "[GENERAL] ", "[SKIP] ", "[MOD40%] ", "[OK] ", "[PRIOR] "]:
+            if core_text.startswith(prefix):
+                core_text = core_text[len(prefix):]
+                break
+        
+        # 使用核心文本的哈希值进行去重
+        text_hash = hash(core_text.strip()[:200])  # 使用前200字符进行哈希
+        if text_hash in seen_texts:
+            continue  # 跳过重复内容
+        seen_texts.add(text_hash)
+        
+        # 提取并保留知识库元数据
+        metadata = ""
+        category_tag = ""  # 用于精细分类标记
+        adaptation_score = 0  # 适配度评分（1-10分）
+        
+        # 使用容错函数提取元数据
+        type_value = extract_metadata(text, "类型")
+        if type_value:
+            metadata += f"[类型:{type_value}]"
+        
+        category_value = extract_metadata(text, "分类")
+        if category_value:
+            category = category_value
+            metadata += f"[分类:{category}]"
+            # 根据分类生成精细标记，便于后续处理时识别内容类型
+            if "场景构建模板" in category:
+                category_tag = "[场景构建模板]"
+            elif "悬念营造手法" in category:
+                category_tag = "[悬念营造手法]"
+            elif "对话写作技巧" in category:
+                category_tag = "[对话写作技巧]"
+            elif "视角切换技巧" in category:
+                category_tag = "[视角切换技巧]"
+            elif "时间跳跃与回忆穿插" in category:
+                category_tag = "[时间跳跃与回忆穿插]"
+            elif "多线并进冲突集中爆发" in category:
+                category_tag = "[多线并进冲突集中爆发]"
+            elif "伏笔的长线铺设" in category:
+                category_tag = "[伏笔的长线铺设]"
+            elif "个人物品及状态盘点" in category:
+                category_tag = "[个人物品及状态盘点]"
+
+        # 使用容错函数提取关键词
+        keywords_value = extract_metadata(text, "关键词")
+        if keywords_value:
+            keywords = keywords_value
+            metadata += f"[关键词:{keywords}]"
         if re.search(r'第[\d]+章', text) or re.search(r'chapter_[\d]+', text):
             chap_nums = list(map(int, re.findall(r'\d+', text)))
             recent_chap = max(chap_nums) if chap_nums else 0
             time_distance = novel_number - recent_chap
             
             if time_distance <= 2:
-                processed.append(f"[SKIP] 跳过近章内容：{text[:120]}...")
+                processed.append(f"{category_tag}{metadata}[SKIP] 跳过近章内容：{text[:120]}...")
             elif 3 <= time_distance <= 5:
-                processed.append(f"[MOD40%] {text}（需修改≥40%）")
+                processed.append(f"{category_tag}{metadata}[MOD40%] {text}（需修改≥40%）")
             else:
-                processed.append(f"[OK] {text}（可引用核心）")
+                processed.append(f"{category_tag}{metadata}[OK] {text}（可引用核心）")
         else:
-            processed.append(f"[PRIOR] {text}（优先使用）")
+            processed.append(f"{category_tag}{metadata}[PRIOR] {text}（优先使用）")
     return processed
 
 def apply_knowledge_rules(contexts: list, chapter_num: int) -> list:
@@ -425,6 +555,24 @@ def get_filtered_knowledge_context(
 
     try:
         processed_texts = apply_knowledge_rules(retrieved_texts, chapter_info.get('chapter_number', 0))
+        
+        # 去重处理：基于文本内容的核心部分
+        seen_core_texts = set()
+        unique_processed_texts = []
+        for text in processed_texts:
+            # 提取核心文本内容（去除前缀标记）
+            core_text = text
+            for prefix in ["[历史章节限制] ", "[历史参考] ", "[外部知识] ", "[TECHNIQUE] ", "[SETTING] ", "[GENERAL] "]:
+                if core_text.startswith(prefix):
+                    core_text = core_text[len(prefix):]
+                    break
+            # 使用前150字符进行去重判断
+            core_hash = hash(core_text.strip()[:150])
+            if core_hash not in seen_core_texts:
+                seen_core_texts.add(core_hash)
+                unique_processed_texts.append(text)
+        processed_texts = unique_processed_texts
+        
         llm_adapter = create_llm_adapter(
             interface_format=interface_format,
             base_url=base_url,
@@ -435,13 +583,50 @@ def get_filtered_knowledge_context(
             timeout=timeout
         )
         
-        # 限制检索文本长度并格式化
+        # 限制检索文本长度并格式化，同时保留知识库元数据
         formatted_texts = []
+        seen_formatted = set()  # 格式化后的去重集合
         max_text_length = 600
         for i, text in enumerate(processed_texts, 1):
-            if len(text) > max_text_length:
-                text = text[:max_text_length] + "..."
-            formatted_texts.append(f"[预处理结果{i}]\n{text}")
+            # 检查并保留知识库元数据
+            metadata_prefix = ""
+            
+            # 使用容错函数提取元数据
+            type_value = extract_metadata(text, "类型")
+            if type_value:
+                metadata_prefix += f"[类型:{type_value}]"
+            
+            category_value = extract_metadata(text, "分类")
+            if category_value:
+                metadata_prefix += f"[分类:{category_value}]"
+            
+            keywords_value = extract_metadata(text, "关键词")
+            if keywords_value:
+                metadata_prefix += f"[关键词:{keywords_value}]"
+            
+            # 截取文本内容，但保留元数据
+            content_start = text.find("【")
+            content_start = text.find("【") if content_start != -1 else 0
+            content_text = text[content_start:]
+            
+            # 组合元数据和内容
+            full_text = f"{metadata_prefix}\n{content_text}" if metadata_prefix else content_text
+            
+            if len(full_text) > max_text_length:
+                # 保留元数据，截取内容部分
+                if len(metadata_prefix) < max_text_length:
+                    content_max_len = max_text_length - len(metadata_prefix) - 1
+                    full_text = f"{metadata_prefix}\n{content_text[:content_max_len]}..."
+                else:
+                    full_text = full_text[:max_text_length] + "..."
+            
+            # 最终去重检查
+            formatted_hash = hash(full_text.strip()[:200])
+            if formatted_hash in seen_formatted:
+                continue
+            seen_formatted.add(formatted_hash)
+            
+            formatted_texts.append(f"[预处理结果{i}]\n{full_text}")
 
         # 使用格式化函数处理章节信息
         formatted_chapter_info = (
@@ -451,14 +636,36 @@ def get_filtered_knowledge_context(
             f"{chapter_info.get('key_items', '')} | "
             f"{chapter_info.get('scene_location', '')}"
         )
+        # 根据章节核心作用映射到情节类型
+        purpose_mapping = {
+            "推进": "发展",
+            "转折": "转折",
+            "揭示": "揭示",
+            "铺垫": "铺垫",
+            "高潮": "高潮"
+        }
+        chapter_purpose_value = chapter_info.get('chapter_purpose', '')
+        plot_type = purpose_mapping.get(chapter_purpose_value, chapter_purpose_value)
 
-        prompt = knowledge_filter_prompt.format(
+        # 根据悬念密度映射到张力级别
+        suspense_mapping = {
+            "紧凑": "高",
+            "渐进": "中",
+            "爆发": "极高",
+            "平缓": "低"
+        }
+        suspense_value = chapter_info.get('suspense_level', '')
+        tension_level = suspense_mapping.get(suspense_value, suspense_value)
+
+
+        prompt = safe_format(
+            knowledge_filter_prompt,
             chapter_number=chapter_info.get('chapter_number', ''),
             chapter_title=chapter_info.get('chapter_title', ''),
             chapter_role=chapter_info.get('chapter_role', ''),
             chapter_purpose=chapter_info.get('chapter_purpose', ''),
-            plot_type=chapter_info.get('chapter_purpose', ''),  # Using chapter_purpose as plot_type
-            tension_level=chapter_info.get('suspense_level', ''),
+            plot_type=plot_type,
+            tension_level=tension_level,
             similarity_threshold="0.7",  # Default similarity threshold
             value_density_requirement="中等",  # Default value density requirement
             filter_primary_goal="获取与当前章节高度相关的内容",  # Default primary goal
@@ -511,6 +718,22 @@ def build_chapter_prompt(
     # 读取基础文件
     if progress_callback:
         progress_callback(0.1, "读取基础文件")
+    
+    # 初始化进度跟踪
+    current_progress = 0.1
+    progress_steps = [
+        (0.2, "获取章节和单元信息"),
+        (0.3, "准备生成章节摘要"),
+        (0.4, "正在生成章节摘要"),
+        (0.5, "生成知识库检索提示词"),
+        (0.6, "检索知识库"),
+        (0.7, "处理知识库内容"),
+        (0.8, "过滤知识库内容"),
+        (0.85, "构建完整提示词"),
+        (0.9, "提示词构建完成"),
+        (1.0, "完成")
+    ]
+    current_step = 0
 
     arch_file = os.path.join(filepath, "Novel_architecture.txt")
     novel_architecture_text = read_file(arch_file)
@@ -546,13 +769,14 @@ def build_chapter_prompt(
     # 构建单元信息文本
     unit_info_text = ""
     if unit_info:
-        # 获取单元标题和章节数
+        # 获取单元标题和章节范围
         unit_title = unit_info.get('unit_title', '未知')
-        chapter_count = unit_info.get('chapter_count', 0)
+        start_chapter = unit_info.get('start_chapter', 0)
+        end_chapter = unit_info.get('end_chapter', 0)
         
-        # 如果单元标题不包含章节数信息，则添加
-        if chapter_count > 0 and "（包含章节数" not in unit_title:
-            unit_title = f"{unit_title}（包含章节数：{chapter_count}章）"
+        # 如果单元标题不包含章节范围信息，则添加
+        if start_chapter > 0 and end_chapter > 0 and "（包含章节" not in unit_title:
+            unit_title = f"{unit_title}（包含章节：{start_chapter}-{end_chapter}章）"
         
         unit_info_text = f"""
 [单元信息]
@@ -572,7 +796,8 @@ def build_chapter_prompt(
         print(f"错误: 章节目录为空，无法获取章节 {novel_number} 的信息")
         print(f"提示: 请先生成章节目录（步骤2）")
         # 构建默认提示词
-        default_prompt = next_chapter_draft_prompt.format(
+        default_prompt = safe_format(
+            next_chapter_draft_prompt,
             user_guidance=user_guidance if user_guidance else "无特殊指导",
             global_summary=global_summary_text if global_summary_text else "（无全局摘要）",
             previous_chapter_excerpt="（无前文）",
@@ -612,7 +837,8 @@ def build_chapter_prompt(
     chapter_info = get_chapter_info_from_blueprint(blueprint_text, novel_number)
 
     if progress_callback:
-        progress_callback(0.2, "获取章节和单元信息")
+        current_step += 1
+        progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
 
     chapter_title = chapter_info.get("chapter_title", f"第{novel_number}章")
     chapter_role = chapter_info.get("chapter_role", "未设定")
@@ -645,7 +871,8 @@ def build_chapter_prompt(
 
     # 第一章特殊处理
     if novel_number == 1:
-        first_prompt = first_chapter_draft_prompt.format(
+        first_prompt = safe_format(
+            first_chapter_draft_prompt,
             novel_number=novel_number,
             word_number=word_number,
             chapter_title=chapter_title,
@@ -664,7 +891,8 @@ def build_chapter_prompt(
             scene_location=scene_location,
             time_constraint=time_constraint,
             user_guidance=user_guidance,
-            novel_setting=novel_architecture_text
+            novel_setting=novel_architecture_text,
+            filtered_context="（无知识库内容）"
         )
         # 调用回调函数显示提示词内容
         if prompt_callback:
@@ -675,13 +903,15 @@ def build_chapter_prompt(
 
     # 获取前文内容和摘要
     if progress_callback:
-        progress_callback(0.3, "准备生成章节摘要")
+        current_step += 1
+        progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
 
     recent_texts = get_last_n_chapters_text(chapters_dir, novel_number, n=3)
     
     try:
         if progress_callback:
-            progress_callback(0.4, "正在生成章节摘要")
+            current_step += 1
+            progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
 
         logging.info("Attempting to generate summary")
         short_summary = summarize_recent_chapters(
@@ -699,9 +929,6 @@ def build_chapter_prompt(
         )
         logging.info("Summary generated successfully")
 
-        if prompt_callback:
-            prompt_callback(f"\n[章节摘要]\n{short_summary}")
-
         # 添加延时，让用户能看到进度变化
         time.sleep(1)
     except Exception as e:
@@ -717,12 +944,14 @@ def build_chapter_prompt(
 
     # 知识库检索和处理
     if progress_callback:
-        progress_callback(0.5, "生成知识库检索提示词")
+        current_step += 1
+        progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
 
     try:
         # 生成检索关键词
         if progress_callback:
-            progress_callback(0.6, "检索知识库")
+            current_step += 1
+            progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
         llm_adapter = create_llm_adapter(
             interface_format=interface_format,
             base_url=base_url,
@@ -733,7 +962,8 @@ def build_chapter_prompt(
             timeout=timeout
         )
         
-        search_prompt = knowledge_search_prompt.format(
+        search_prompt = safe_format(
+            knowledge_search_prompt,
             chapter_number=novel_number,
             chapter_title=chapter_title,
             chapter_role=chapter_role,
@@ -773,6 +1003,7 @@ def build_chapter_prompt(
 
         # 执行向量检索
         all_contexts = []
+        seen_contexts = set()  # 用于去重的集合
         from embedding_adapters import create_embedding_adapter
         embedding_adapter = create_embedding_adapter(
             embedding_interface_format,
@@ -794,6 +1025,12 @@ def build_chapter_prompt(
                     k=actual_k
                 )
                 if context:
+                    # 使用内容的哈希值进行去重
+                    context_hash = hash(context.strip())
+                    if context_hash in seen_contexts:
+                        continue  # 跳过重复内容
+                    seen_contexts.add(context_hash)
+                    
                     if any(kw in group.lower() for kw in ["技法", "手法", "模板"]):
                         all_contexts.append(f"[TECHNIQUE] {context}")
                     elif any(kw in group.lower() for kw in ["设定", "技术", "世界观"]):
@@ -802,7 +1039,24 @@ def build_chapter_prompt(
                         all_contexts.append(f"[GENERAL] {context}")
 
         # 应用内容规则
-        processed_contexts = apply_content_rules(all_contexts, novel_number)
+        # 先构建chapter_info字典
+        chapter_info_for_rules = {
+            "chapter_number": novel_number,
+            "chapter_title": chapter_title,
+            "chapter_role": chapter_role,
+            "chapter_purpose": chapter_purpose,
+            "characters_involved": characters_involved,
+            "key_items": key_items,
+            "scene_location": scene_location,
+            "foreshadowing": foreshadowing,
+            "suspense_level": suspense_level,
+            "plot_twist_level": plot_twist_level,
+            "surface_cultivation": surface_cultivation,
+            "actual_cultivation": actual_cultivation,
+            "chapter_summary": chapter_summary,
+            "time_constraint": time_constraint
+        }
+        processed_contexts = apply_content_rules(all_contexts, novel_number, chapter_info_for_rules)
         
         # 执行知识过滤
         chapter_info_for_filter = {
@@ -839,20 +1093,19 @@ def build_chapter_prompt(
         logging.error(f"知识处理流程异常：{str(e)}")
         filtered_context = "（知识库处理失败）"
 
-    if prompt_callback:
-        prompt_callback(f"\n[知识库内容]\n{filtered_context}")
-
-    # 添加延时，让用户能看到进度变化
-    time.sleep(1)
+    # 注：不再单独输出知识库内容，避免与最终提示词中的内容重复
+    # 知识库内容已包含在最终提示词的"知识库参考"部分
 
     # 返回最终提示词
     if progress_callback:
-        progress_callback(0.85, "构建完整提示词")
+        current_step += 1
+        progress_callback(progress_steps[current_step][0], progress_steps[current_step][1])
 
     # 添加延时，让用户能看到进度变化
     time.sleep(1)
 
-    final_prompt = next_chapter_draft_prompt.format(
+    final_prompt = safe_format(
+        next_chapter_draft_prompt,
         user_guidance=user_guidance if user_guidance else "无特殊指导",
         global_summary=global_summary_text,
         previous_chapter_excerpt=previous_excerpt,
@@ -1120,9 +1373,6 @@ def generate_chapter_draft_stream(
     log(f"✅ 第{novel_number}章草稿生成完成")
 
     
-    chapter_file = os.path.join(chapters_dir, f"chapter_{novel_number}.txt")
-    clear_file_content(chapter_file)
-    save_string_to_txt(chapter_content, chapter_file)
-    logging.info(f"[Draft] Chapter {novel_number} generated as a draft.")
+
     
     return chapter_content

@@ -239,9 +239,10 @@ def generate_chapter_blueprint_ui(self):
                 success: 是否成功完成（True=完成，False=取消）
             """
             if success:
-                # 成功完成，显示日志并加载文件
+                # 成功完成，显示日志
                 self.safe_log("✅ 章节目录生成完成。请在 '章节大纲' 标签页查看或编辑。")
-                load_chapter_blueprint(self)
+                # 不自动加载文件，避免重复显示
+                # 用户可以手动点击"加载章节大纲文件"按钮来查看内容
                 # 更新按钮状态
                 self.update_step_buttons_state()
                 self.update_optional_buttons_state()
